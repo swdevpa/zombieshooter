@@ -613,23 +613,32 @@ export class Map {
   
   // Create a bridge between two points
   createBridge(point1, point2) {
-    // Determine bridge direction and length
-    const dx = point2.x - point1.x;
-    const dy = point2.y - point1.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
+    // Berechne die Richtung des Pfads
+    const dirX = Math.sign(point2.x - point1.x);
+    const dirY = Math.sign(point2.y - point1.y);
     
-    // Normalize direction
-    const dirX = dx / distance;
-    const dirY = dy / distance;
+    // Start an Punkt 1
+    let x = point1.x;
+    let y = point1.y;
     
-    // Create the bridge
-    for (let t = 0; t <= distance; t++) {
-      const x = Math.floor(point1.x + dirX * t);
-      const y = Math.floor(point1.y + dirY * t);
-      
-      if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
-        this.mapData[y][x] = 1; // Stone path
+    // Erstelle den Pfad Punkt für Punkt
+    while (x !== point2.x || y !== point2.y) {
+      // Setze die aktuelle Position auf Stein
+      if (this.mapData[y][x] === 0) { // Nur, wenn aktuell Wasser ist
+        this.mapData[y][x] = 4; // Pfad anstelle von Stein
       }
+      
+      // Bewege in Richtung Punkt 2
+      if (x !== point2.x) {
+        x += dirX;
+      } else if (y !== point2.y) {
+        y += dirY;
+      }
+    }
+    
+    // Stelle sicher, dass Endpunkt auch gesetzt ist
+    if (this.mapData[point2.y][point2.x] === 0) {
+      this.mapData[point2.y][point2.x] = 4; // Pfad anstelle von Stein
     }
   }
   
@@ -864,64 +873,58 @@ export class Map {
   
   // Erstellt zusammengeführte Geometrien für bessere Performance
   createMergedGeometries(batches) {
-    // Container für zusammengeführte Geometrien
+    // Erstelle Container für zusammengeführte Meshes
     this.mergedMeshes = new THREE.Group();
     this.container.add(this.mergedMeshes);
     
-    // Zusammenführen aller Land-Geometrien
-    if (batches.land.length > 0) {
-      this.mergeBatch('land', batches.land, this.materialCache.getMaterial('land'));
-    }
+    // Sammle alle Materials für die verschiedenen Tile-Typen
+    const landMaterial = this.tiles[0][0].materialCache.getMaterial('land');
+    const wallMaterial = this.tiles[0][0].materialCache.getMaterial('wall');
+    const wallBaseMaterial = this.tiles[0][0].materialCache.getMaterial('wallBase');
+    const groundMaterial = this.tiles[0][0].materialCache.getMaterial('ground');
+    const trunkMaterial = this.tiles[0][0].materialCache.getMaterial('trunk');
+    const foliageMaterial = this.tiles[0][0].materialCache.getMaterial('foliage');
+    const pathMaterial = this.tiles[0][0].materialCache.getMaterial('path');
     
-    // Wasser behalten wir als individuelles Mesh für Animation
-    // Aber wir können es in größere Chunks zusammenfassen
-    if (batches.water.length > 0) {
-      const maxWaterPerBatch = 16; // Wasser in kleineren Batches für Animation
-      for (let i = 0; i < batches.water.length; i += maxWaterPerBatch) {
-        const waterBatch = batches.water.slice(i, i + maxWaterPerBatch);
-        this.mergeBatch(`water_${i}`, waterBatch, this.materialCache.getMaterial('water.combined'));
-      }
-    }
+    // Teile die Batches in Chunks auf, um große Geometrien zu vermeiden
+    const chunkSize = 50; // Maximale Anzahl von Tiles pro Chunk
     
-    // Zusammenführen der Gras-Geometrien
-    if (batches.grass.length > 0) {
-      this.mergeBatch('grass', batches.grass, this.materialCache.getMaterial('grass'));
-    }
+    // Land/Stein in Batches verarbeiten
+    this.processBatchesInChunks(batches.land, landMaterial, 'land', chunkSize);
     
-    // Zusammenführen der Wand-Geometrien
-    if (batches.walls.length > 0) {
-      this.mergeBatch('walls', batches.walls, this.materialCache.getMaterial('wall'));
-    }
+    // Wände in Batches verarbeiten
+    this.processBatchesInChunks(batches.wall, wallMaterial, 'wall', chunkSize);
     
-    // Zusammenführen der Wand-Basis-Geometrien
-    if (batches.wallBase.length > 0) {
-      this.mergeBatch('wallBase', batches.wallBase, this.materialCache.getMaterial('wallBase'));
-    }
+    // Wandbasen in Batches verarbeiten
+    this.processBatchesInChunks(batches.wallBase, wallBaseMaterial, 'wallBase', chunkSize);
     
-    // Zusammenführen der Baum-Boden-Geometrien
-    if (batches.treeGround.length > 0) {
-      this.mergeBatch('treeGround', batches.treeGround, this.materialCache.getMaterial('ground'));
-    }
+    // Boden unter Bäumen in Batches verarbeiten
+    this.processBatchesInChunks(batches.ground, groundMaterial, 'ground', chunkSize);
     
-    // Zusammenführen der Baumstamm-Geometrien
-    if (batches.treeTrunk.length > 0) {
-      this.mergeBatch('treeTrunk', batches.treeTrunk, this.materialCache.getMaterial('trunk'));
-    }
+    // Baumstämme in Batches verarbeiten
+    this.processBatchesInChunks(batches.treeTrunk, trunkMaterial, 'treeTrunk', chunkSize);
     
-    // Zusammenführen der Baumkronen-Geometrien
-    if (batches.treeFoliage.length > 0) {
-      this.mergeBatch('treeFoliage', batches.treeFoliage, this.materialCache.getMaterial('foliage'));
-    }
+    // Baumkronen in Batches verarbeiten
+    this.processBatchesInChunks(batches.treeFoliage, foliageMaterial, 'treeFoliage', chunkSize);
     
-    // console.log('Geometrie-Batching abgeschlossen');
+    // Pfade in Batches verarbeiten
+    this.processBatchesInChunks(batches.path, pathMaterial, 'path', chunkSize);
+  }
+  
+  // Hilfsmethode zum Verarbeiten von Batches in Chunks
+  processBatchesInChunks(batch, material, name, chunkSize) {
+    if (!batch || batch.length === 0) return;
+    
+    // Teile die Geometrien in Chunks auf
+    for (let i = 0; i < batch.length; i += chunkSize) {
+      const chunkBatch = batch.slice(i, i + chunkSize);
+      this.mergeBatch(`${name}_${i/chunkSize}`, chunkBatch, material);
+    }
   }
   
   // Hilfsfunktion zum Zusammenführen einer Gruppe von Geometrien
   mergeBatch(name, batch, material) {
     if (batch.length === 0) return;
-    
-    // Erstelle eine Instanz der ersten Geometrie als Basis
-    const baseGeometry = batch[0].originalMesh.geometry;
     
     // Erstelle eine zusammengeführte Geometrie
     const mergedGeometry = new THREE.BufferGeometry();
@@ -933,15 +936,29 @@ export class Map {
     
     // Für jede Geometrie in diesem Batch
     batch.forEach(item => {
-      // Hole die Positions-Attribute aus der Geometrie
-      const geometry = item.originalMesh.geometry;
+      // Hole die Position des Objekts
+      const position = item.position;
+      
+      // Hole die Geometrie
+      const mesh = item.originalMesh; // Geändert von item.mesh zu item.originalMesh
+      const geometry = mesh.geometry;
+      
+      // Hole die Attribute der Geometrie
       const positionAttribute = geometry.getAttribute('position');
       const normalAttribute = geometry.getAttribute('normal');
       const uvAttribute = geometry.getAttribute('uv');
       
       // Matrix für die Transformation
       const matrix = new THREE.Matrix4();
-      matrix.setPosition(item.position);
+      
+      // Position für das Objekt anwenden
+      matrix.setPosition(position);
+      
+      // Berücksichtige die Y-Position des Mesh (für Wände, Baumstämme, etc.)
+      if (mesh.position.y !== 0) {
+        const posOffset = new THREE.Vector3(0, mesh.position.y, 0);
+        matrix.setPosition(position.clone().add(posOffset));
+      }
       
       // Normalenmatrix für korrekte Transformation der Normalen
       const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
@@ -966,15 +983,17 @@ export class Map {
         
         normals.push(normal.x, normal.y, normal.z);
         
-        // UVs kopieren
-        uvs.push(
-          uvAttribute.getX(i),
-          uvAttribute.getY(i)
-        );
+        // UVs kopieren, falls vorhanden
+        if (uvAttribute) {
+          uvs.push(
+            uvAttribute.getX(i),
+            uvAttribute.getY(i)
+          );
+        } else {
+          // Fallback UVs erzeugen
+          uvs.push(0, 0);
+        }
       }
-      
-      // Ursprüngliches Mesh ausblenden, da wir jetzt die zusammengeführte Version verwenden
-      item.originalMesh.visible = false;
     });
     
     // Setze die Buffer-Attribute der zusammengeführten Geometrie
@@ -992,8 +1011,6 @@ export class Map {
     
     // Füge das zusammengeführte Mesh zum Container hinzu
     this.mergedMeshes.add(mergedMesh);
-    
-    // console.log(`Batch erstellt: ${name} mit ${batch.length} Geometrien`);
   }
   
   // Aktualisiere die Chunks für Frustum-Culling
@@ -1225,9 +1242,9 @@ export class Map {
       currentX = Math.max(0, Math.min(currentX, this.width - 1));
       currentY = Math.max(0, Math.min(currentY, this.height - 1));
       
-      // Set this point as walkable
-      if (this.mapData[currentY][currentX] !== 1) {
-        this.mapData[currentY][currentX] = 1; // Stone/walkable
+      // Set this point as walkable path (Tile-Typ 4)
+      if (this.mapData[currentY][currentX] !== 1 && this.mapData[currentY][currentX] !== 4) {
+        this.mapData[currentY][currentX] = 4; // Pfad/Weg
       }
     }
     
@@ -1304,8 +1321,11 @@ export class Map {
     );
     waterGroundGeometry.rotateX(-Math.PI / 2);
     
-    const waterGroundMaterial = new THREE.MeshBasicMaterial({
-      color: 0x1a75ff, // Wasserfarbe
+    const waterGroundMaterial = new THREE.MeshStandardMaterial({
+      map: this.assetLoader.getTexture('ground'),
+      color: 0x3498db, // Blauer Farbton für Unterwassergrund
+      roughness: 0.8,
+      metalness: 0.1,
       side: THREE.DoubleSide,
       depthWrite: true
     });
@@ -1318,6 +1338,15 @@ export class Map {
     );
     waterGround.renderOrder = -1; // Zuerst rendern (unter allem anderen)
     waterGround.frustumCulled = false; // Nie ausblenden
+    waterGround.receiveShadow = true; // Schatten empfangen
+    
+    // Wiederhole die Textur mehrfach über den Boden
+    if (waterGroundMaterial.map) {
+      waterGroundMaterial.map.repeat.set(this.width, this.height);
+      waterGroundMaterial.map.wrapS = THREE.RepeatWrapping;
+      waterGroundMaterial.map.wrapT = THREE.RepeatWrapping;
+      waterGroundMaterial.map.needsUpdate = true;
+    }
     
     this.container.add(waterGround);
   }
@@ -1375,6 +1404,10 @@ export class Map {
         if (this.mapData[y][x] === 0 || this.mapData[y][x] === 2 || this.mapData[y][x] === 3) {
           this.navigationGrid[y][x] = 0; // Not walkable
         }
+        // Pfade (Typ 4) sind begehbar und werden bevorzugt
+        else if (this.mapData[y][x] === 4) {
+          this.navigationGrid[y][x] = 3; // Pfade haben eine höhere Gewichtung (bevorzugt)
+        }
       }
     }
     
@@ -1425,7 +1458,8 @@ export class Map {
       wallBase: [],   // Basis für Wände
       ground: [],     // Boden unter Bäumen
       treeTrunk: [],  // Baumstämme
-      treeFoliage: [] // Baumkronen
+      treeFoliage: [], // Baumkronen
+      path: []        // Type 4: Pfade/Wege
     };
     
     // Sammle alle Geometrien nach Typ
@@ -1455,21 +1489,14 @@ export class Map {
             
           case 2: // Wand
             if (tile.meshes.wall) {
-              const wallPos = worldPosition.clone();
-              wallPos.y = 0.5; // Position der Wand
-              
               geometryCollections.wall.push({
-                position: wallPos,
+                position: worldPosition.clone(),
                 mesh: tile.meshes.wall
               });
             }
-            
             if (tile.meshes.base) {
-              const basePos = worldPosition.clone();
-              basePos.y = -0.01; // Position der Basis
-              
               geometryCollections.wallBase.push({
-                position: basePos,
+                position: worldPosition.clone(),
                 mesh: tile.meshes.base
               });
             }
@@ -1482,26 +1509,31 @@ export class Map {
                 mesh: tile.meshes.ground
               });
             }
-            
             if (tile.meshes.trunk) {
-              const trunkPos = worldPosition.clone();
-              trunkPos.y = 0.4; // Position des Stamms
-              
               geometryCollections.treeTrunk.push({
-                position: trunkPos,
+                position: worldPosition.clone(),
                 mesh: tile.meshes.trunk
               });
             }
-            
             if (tile.meshes.foliage) {
-              const foliagePos = worldPosition.clone();
-              foliagePos.y = 1.0; // Position der Baumkrone
-              
               geometryCollections.treeFoliage.push({
-                position: foliagePos,
+                position: worldPosition.clone(),
                 mesh: tile.meshes.foliage
               });
             }
+            break;
+            
+          case 4: // Pfad/Weg
+            if (tile.meshes.path) {
+              geometryCollections.path.push({
+                position: worldPosition.clone(),
+                mesh: tile.meshes.path
+              });
+            }
+            break;
+            
+          default:
+            // Überspringe unbekannte Typen
             break;
         }
       }

@@ -17,7 +17,8 @@ export class MaterialCache {
       'wallBase': null,
       'ground': null,
       'trunk': null,
-      'foliage': null
+      'foliage': null,
+      'path': null
     };
     
     // Initialize cache
@@ -44,6 +45,9 @@ export class MaterialCache {
     // Create additional materials for more complex structures
     this.createWallBaseMaterial();
     this.createTreeDetailMaterials();
+    
+    // Create path material
+    this.createPathMaterial();
     
     this.initialized = true;
   }
@@ -237,6 +241,20 @@ export class MaterialCache {
     this.materialRefs.foliage = foliageMaterial;
   }
   
+  // Pfad-Material erstellen
+  createPathMaterial() {
+    const pathTexture = this.assetLoader.getTexture('path');
+    const pathMaterial = new THREE.MeshStandardMaterial({
+      map: pathTexture || null,
+      color: 0xD2B48C, // Sandfarbe für Pfade
+      roughness: 0.8,
+      metalness: 0.1
+    });
+    
+    this.materials['path'] = pathMaterial;
+    this.materialRefs.path = pathMaterial;
+  }
+  
   // Get a material from the cache
   getMaterial(key) {
     // Special case for water.combined (water animation may use this)
@@ -364,6 +382,12 @@ export class Tile {
         this.container.add(this.meshes.ground);
         this.container.add(this.meshes.trunk);
         this.container.add(this.meshes.foliage);
+        break;
+        
+      case 4: // Pfad/Weg
+        this.meshes.path = new THREE.Mesh(baseGeometry, this.materialCache.getMaterial('path'));
+        this.meshes.path.receiveShadow = true;
+        this.container.add(this.meshes.path);
         break;
         
       default: // Gras oder Fallback

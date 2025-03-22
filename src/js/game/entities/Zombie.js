@@ -53,7 +53,7 @@ export class Zombie {
     });
     
     const headMaterial = new THREE.MeshStandardMaterial({
-      map: this.assetLoader.getTexture('zombie_head'),
+      map: this.assetLoader.getTexture('zombieHead'),
       color: 0xAED581, // Lighter green for head
       roughness: 0.9
     });

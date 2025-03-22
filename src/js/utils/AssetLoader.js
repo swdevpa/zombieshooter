@@ -35,7 +35,10 @@ export class AssetLoader {
     this.createWoodTexture();
     this.createTreeTexture();
     this.createZombieTexture();
+    this.createZombieHeadTexture();
     this.createBulletTexture();
+    this.createGroundTexture();
+    this.createPathTexture();
     
     const endTime = performance.now();
     
@@ -541,6 +544,69 @@ export class AssetLoader {
     return this.textures['zombie'];
   }
   
+  // Zombie Kopf Textur
+  createZombieHeadTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+    
+    // Hintergrund löschen (transparent)
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Gesicht (zombiegrün)
+    ctx.fillStyle = '#2ecc71';
+    ctx.fillRect(canvas.width * 0.25, canvas.height * 0.25, canvas.width * 0.5, canvas.height * 0.5);
+    
+    // Augen (rot und blutunterlaufen)
+    ctx.fillStyle = '#c0392b';
+    ctx.fillRect(canvas.width * 0.35, canvas.height * 0.35, canvas.width * 0.1, canvas.height * 0.1);
+    ctx.fillRect(canvas.width * 0.55, canvas.height * 0.35, canvas.width * 0.1, canvas.height * 0.1);
+    
+    // Pupillen
+    ctx.fillStyle = '#2c3e50';
+    ctx.fillRect(canvas.width * 0.38, canvas.height * 0.38, canvas.width * 0.04, canvas.height * 0.04);
+    ctx.fillRect(canvas.width * 0.58, canvas.height * 0.38, canvas.width * 0.04, canvas.height * 0.04);
+    
+    // Mund (blutig)
+    ctx.fillStyle = '#c0392b';
+    ctx.fillRect(canvas.width * 0.35, canvas.height * 0.5, canvas.width * 0.3, canvas.height * 0.08);
+    
+    // Zähne
+    for (let i = 0; i < 4; i++) {
+      const x = canvas.width * (0.35 + 0.075 * i);
+      ctx.fillStyle = '#ecf0f1';
+      ctx.fillRect(x, canvas.height * 0.5, canvas.width * 0.05, canvas.height * 0.05);
+    }
+    
+    // Blutflecken/Wunden im Gesicht
+    for (let i = 0; i < 5; i++) {
+      const x = canvas.width * 0.25 + Math.random() * canvas.width * 0.5;
+      const y = canvas.height * 0.25 + Math.random() * canvas.height * 0.5;
+      const size = 1 + Math.random() * 3;
+      
+      ctx.fillStyle = '#c0392b';
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Verrottungseffekte
+    for (let i = 0; i < 3; i++) {
+      const x = canvas.width * 0.25 + Math.random() * canvas.width * 0.5;
+      const y = canvas.height * 0.25 + Math.random() * canvas.height * 0.5;
+      const size = 3 + Math.random() * 5;
+      
+      ctx.fillStyle = '#7f8c8d';
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    this.textures['zombieHead'] = new THREE.CanvasTexture(canvas);
+    return this.textures['zombieHead'];
+  }
+  
   createBulletTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
@@ -590,6 +656,141 @@ export class AssetLoader {
     
     this.textures['bullet'] = new THREE.CanvasTexture(canvas);
     return this.textures['bullet'];
+  }
+  
+  // Boden Textur
+  createGroundTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+    
+    // Basis-Bodenfarbe
+    ctx.fillStyle = '#8B4513'; // Braun als Grundfarbe
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Verschiedene Bodenmuster erstellen
+    
+    // Feiner Sand/Staub
+    for (let i = 0; i < 500; i++) {
+      const x = Math.random() * canvas.width;
+      const y = Math.random() * canvas.height;
+      const size = 0.5 + Math.random() * 1.5;
+      const color = Math.random() > 0.5 ? '#A0522D' : '#CD853F';
+      
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Kleine Steine
+    for (let i = 0; i < 50; i++) {
+      const x = Math.random() * canvas.width;
+      const y = Math.random() * canvas.height;
+      const size = 1 + Math.random() * 3;
+      
+      ctx.fillStyle = '#7f8c8d';
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Strukturlinien hinzufügen
+    for (let i = 0; i < 20; i++) {
+      const x = Math.random() * canvas.width;
+      const y = Math.random() * canvas.height;
+      const length = 10 + Math.random() * 20;
+      const angle = Math.random() * Math.PI * 2;
+      
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length);
+      ctx.stroke();
+    }
+    
+    this.textures['ground'] = new THREE.CanvasTexture(canvas);
+    return this.textures['ground'];
+  }
+  
+  // Pfad/Straßen Textur
+  createPathTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+    
+    // Basis-Pfadfarbe
+    ctx.fillStyle = '#D2B48C'; // Sandfarbe für Pfade
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Pfadstruktur hinzufügen - horizontale Linien
+    for (let y = 0; y < canvas.height; y += 8) {
+      ctx.strokeStyle = 'rgba(101, 67, 33, 0.3)'; // Dunkelbrauner Verlauf
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    }
+    
+    // Unregelmäßige Strukturen
+    for (let i = 0; i < 200; i++) {
+      const x = Math.random() * canvas.width;
+      const y = Math.random() * canvas.height;
+      const size = 0.5 + Math.random() * 2;
+      
+      // Variiere die Farben leicht für natürlicheres Aussehen
+      const brightness = 0.7 + Math.random() * 0.3;
+      ctx.fillStyle = `rgba(180, 150, 100, ${brightness})`;
+      
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Kleine Steine hinzufügen
+    for (let i = 0; i < 30; i++) {
+      const x = Math.random() * canvas.width;
+      const y = Math.random() * canvas.height;
+      const size = 1 + Math.random() * 2;
+      
+      ctx.fillStyle = '#A9A9A9'; // Steingrau
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Fußspuren/Reifenspuren Effekt
+    for (let i = 0; i < 3; i++) {
+      const startX = Math.random() * canvas.width;
+      const startY = Math.random() * canvas.height;
+      const length = 30 + Math.random() * 50;
+      const angle = Math.random() * Math.PI * 2;
+      const width = 2 + Math.random() * 3;
+      
+      ctx.strokeStyle = 'rgba(120, 100, 80, 0.4)';
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      
+      // Leicht geschwungene Spur
+      const segments = 5;
+      for (let j = 1; j <= segments; j++) {
+        const t = j / segments;
+        const waveX = Math.sin(t * Math.PI * 2) * 3;
+        const x = startX + Math.cos(angle) * length * t + waveX;
+        const y = startY + Math.sin(angle) * length * t;
+        ctx.lineTo(x, y);
+      }
+      
+      ctx.stroke();
+    }
+    
+    this.textures['path'] = new THREE.CanvasTexture(canvas);
+    return this.textures['path'];
   }
   
   getTexture(name) {
