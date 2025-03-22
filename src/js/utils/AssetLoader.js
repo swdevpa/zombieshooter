@@ -352,73 +352,90 @@ export class AssetLoader {
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
     
-    // Basis-Holzfarbe
-    ctx.fillStyle = '#D2691E';
+    // Hintergrund - Basisfarbe für Holz
+    ctx.fillStyle = '#8B4513'; // Grundfarbe für Holz (SaddleBrown)
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Holzmaserung
-    const planks = 8;
-    const plankHeight = canvas.height / planks;
+    // Woodgrain-Effekt durch wellenförmige Linien erzeugen
+    for (let i = 0; i < 20; i++) {
+      // Amplitude der Wellen (Stärke der Holzmaserung)
+      const amplitude = 5 + Math.random() * 8;
+      // Frequenz der Wellen (wie eng die Holzmaserung ist)
+      const frequency = 0.01 + Math.random() * 0.04;
+      // Versatz für die Wellen
+      const offset = Math.random() * canvas.height;
+      // Breite der Maserung
+      const lineWidth = 1 + Math.random() * 3;
+      
+      // Farbe der Maserung - leicht variieren für realistischeren Look
+      const brightness = 0.7 + Math.random() * 0.3; // 70-100% Helligkeit
+      const r = Math.floor(139 * brightness); // Basis ist RGB von SaddleBrown (139, 69, 19)
+      const g = Math.floor(69 * brightness);
+      const b = Math.floor(19 * brightness);
+      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.7)`;
+      ctx.lineWidth = lineWidth;
+      
+      // Zeichne gewellte Linie für Maserungseffekt
+      ctx.beginPath();
+      
+      for (let x = 0; x < canvas.width; x++) {
+        const y = offset + amplitude * Math.sin(x * frequency);
+        if (x === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      
+      ctx.stroke();
+    }
     
-    for (let i = 0; i < planks; i++) {
-      const y = i * plankHeight;
+    // Knoteneffekte im Holz hinzufügen
+    for (let i = 0; i < 3; i++) {
+      const x = Math.random() * canvas.width;
+      const y = Math.random() * canvas.height;
+      const radius = 5 + Math.random() * 10;
       
-      // Plankenbasis mit Variationen
-      const baseR = 180 + Math.floor(Math.random() * 20);
-      const baseG = 100 + Math.floor(Math.random() * 20);
-      const baseB = 30 + Math.floor(Math.random() * 20);
+      // Dunklerer Außenring
+      const darkGradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+      darkGradient.addColorStop(0, 'rgba(80, 40, 10, 0.1)');
+      darkGradient.addColorStop(0.7, 'rgba(80, 40, 10, 0.8)');
+      darkGradient.addColorStop(1, 'rgba(80, 40, 10, 0)');
       
-      ctx.fillStyle = `rgb(${baseR}, ${baseG}, ${baseB})`;
-      ctx.fillRect(0, y, canvas.width, plankHeight - 1);
+      ctx.fillStyle = darkGradient;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
       
-      // Plankenspalt
-      ctx.fillStyle = '#5D4037';
-      ctx.fillRect(0, y + plankHeight - 1, canvas.width, 1);
+      // Hellerer Innenring
+      const lightGradient = ctx.createRadialGradient(x, y, 0, x, y, radius * 0.6);
+      lightGradient.addColorStop(0, 'rgba(160, 100, 50, 0.8)');
+      lightGradient.addColorStop(1, 'rgba(160, 100, 50, 0)');
       
-      // Holzmaserung für jede Planke
-      for (let j = 0; j < 5; j++) {
-        const lineY = y + j * (plankHeight / 5) + Math.random() * 3;
-        ctx.strokeStyle = `rgba(${baseR - 40}, ${baseG - 40}, ${baseB - 20}, 0.5)`;
-        ctx.lineWidth = 1;
-        
-        ctx.beginPath();
-        ctx.moveTo(0, lineY);
-        
-        // Geschwungene Maserungslinie
-        let prevX = 0;
-        for (let x = 20; x < canvas.width; x += 20) {
-          const newY = lineY + (Math.random() * 4 - 2);
-          ctx.lineTo(x, newY);
-          prevX = x;
-        }
-        
-        ctx.stroke();
-      }
+      ctx.fillStyle = lightGradient;
+      ctx.beginPath();
+      ctx.arc(x, y, radius * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Rinde-ähnliche Textur durch vertikale unregelmäßige Linien
+    for (let i = 0; i < 30; i++) {
+      const x = Math.random() * canvas.width;
+      const length = 5 + Math.random() * 30;
+      const width = 1 + Math.random() * 3;
       
-      // Astlöcher
-      if (Math.random() > 0.7) {
-        const knots = Math.floor(Math.random() * 2) + 1;
-        for (let k = 0; k < knots; k++) {
-          const knotX = Math.random() * canvas.width;
-          const knotY = y + Math.random() * plankHeight;
-          const knotSize = 2 + Math.random() * 6;
-          
-          // Dunkler äußerer Ring
-          ctx.fillStyle = '#5D4037';
-          ctx.beginPath();
-          ctx.arc(knotX, knotY, knotSize, 0, Math.PI * 2);
-          ctx.fill();
-          
-          // Innerer Teil
-          ctx.fillStyle = '#8B4513';
-          ctx.beginPath();
-          ctx.arc(knotX, knotY, knotSize * 0.6, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
+      ctx.strokeStyle = `rgba(50, 25, 0, ${0.3 + Math.random() * 0.3})`;
+      ctx.lineWidth = width;
+      
+      ctx.beginPath();
+      ctx.moveTo(x, Math.random() * canvas.height);
+      ctx.lineTo(x + (Math.random() * 10 - 5), Math.random() * canvas.height);
+      ctx.stroke();
     }
     
     this.textures['wood'] = new THREE.CanvasTexture(canvas);
+    this.textures['wood'].wrapS = THREE.RepeatWrapping;
+    this.textures['wood'].wrapT = THREE.RepeatWrapping;
     return this.textures['wood'];
   }
   
@@ -432,64 +449,71 @@ export class AssetLoader {
     // Hintergrund löschen (transparent)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Stamm (unten)
-    ctx.fillStyle = '#8B4513';
-    ctx.fillRect(canvas.width * 0.4, canvas.height * 0.6, canvas.width * 0.2, canvas.height * 0.4);
+    // Gradient für realistischeres Grün
+    const foliageGradient = ctx.createRadialGradient(
+      canvas.width * 0.5, canvas.height * 0.3, 0,
+      canvas.width * 0.5, canvas.height * 0.3, canvas.width * 0.5
+    );
+    foliageGradient.addColorStop(0, '#2ecc71'); // Helles Grün in der Mitte
+    foliageGradient.addColorStop(0.7, '#27ae60'); // Mittleres Grün
+    foliageGradient.addColorStop(1, '#145a32'); // Dunkles Grün an den Rändern
     
-    // Stamm Maserung
-    for (let i = 0; i < 5; i++) {
-      const y = canvas.height * 0.6 + i * (canvas.height * 0.4 / 5);
-      ctx.strokeStyle = '#5D4037';
-      ctx.lineWidth = 1;
+    // Zeichne ein reichhaltigeres Blattmuster
+    ctx.fillStyle = foliageGradient;
+    ctx.beginPath();
+    ctx.arc(canvas.width * 0.5, canvas.height * 0.3, canvas.width * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Füge etwas Textur und Details hinzu
+    for (let i = 0; i < 300; i++) {
+      // Zufällige Position innerhalb des Baumes
+      const angle = Math.random() * Math.PI * 2;
+      const distance = Math.random() * canvas.width * 0.3;
+      const x = canvas.width * 0.5 + Math.cos(angle) * distance;
+      const y = canvas.height * 0.3 + Math.sin(angle) * distance;
+      
+      // Abwechselnd hellere und dunklere Punkte für Textur
+      const shade = Math.random() > 0.5 ? 
+        'rgba(255, 255, 255, 0.1)' : 
+        'rgba(0, 0, 0, 0.1)';
+      
+      ctx.fillStyle = shade;
       ctx.beginPath();
-      ctx.moveTo(canvas.width * 0.4, y);
-      ctx.lineTo(canvas.width * 0.6, y);
-      ctx.stroke();
+      ctx.arc(x, y, 1 + Math.random() * 2, 0, Math.PI * 2);
+      ctx.fill();
     }
     
-    // Baumkrone (oben)
-    ctx.fillStyle = '#2ecc71';
-    
-    // Mehrere Ebenen für die Baumkrone
-    ctx.beginPath();
-    ctx.moveTo(canvas.width * 0.2, canvas.height * 0.6);
-    ctx.lineTo(canvas.width * 0.5, canvas.height * 0.1);
-    ctx.lineTo(canvas.width * 0.8, canvas.height * 0.6);
-    ctx.closePath();
-    ctx.fill();
-    
-    // Mittlere Ebene
-    ctx.fillStyle = '#27ae60';
-    ctx.beginPath();
-    ctx.moveTo(canvas.width * 0.25, canvas.height * 0.5);
-    ctx.lineTo(canvas.width * 0.5, canvas.height * 0.15);
-    ctx.lineTo(canvas.width * 0.75, canvas.height * 0.5);
-    ctx.closePath();
-    ctx.fill();
-    
-    // Topebene
-    ctx.fillStyle = '#2ecc71';
-    ctx.beginPath();
-    ctx.moveTo(canvas.width * 0.3, canvas.height * 0.4);
-    ctx.lineTo(canvas.width * 0.5, canvas.height * 0.1);
-    ctx.lineTo(canvas.width * 0.7, canvas.height * 0.4);
-    ctx.closePath();
-    ctx.fill();
-    
-    // Highlights in den Blättern
-    for (let i = 0; i < 30; i++) {
-      const x = canvas.width * 0.3 + Math.random() * canvas.width * 0.4;
-      const y = canvas.height * 0.1 + Math.random() * canvas.height * 0.4;
+    // Zeichne einige dunklere Bereiche für Tiefe
+    for (let i = 0; i < 8; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = Math.random() * canvas.width * 0.2;
+      const x = canvas.width * 0.5 + Math.cos(angle) * distance;
+      const y = canvas.height * 0.3 + Math.sin(angle) * distance;
+      const size = 5 + Math.random() * 15;
       
-      if (y < canvas.height * 0.6) { // Nur innerhalb der Baumkrone
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.beginPath();
-        ctx.arc(x, y, 1 + Math.random() * 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Zeichne einige hellere Bereiche für Sonnenlicht
+    for (let i = 0; i < 5; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = Math.random() * canvas.width * 0.25;
+      const x = canvas.width * 0.5 + Math.cos(angle) * distance;
+      const y = canvas.height * 0.3 + Math.sin(angle) * distance;
+      const size = 5 + Math.random() * 10;
+      
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
     }
     
     this.textures['tree'] = new THREE.CanvasTexture(canvas);
+    this.textures['tree'].wrapS = THREE.RepeatWrapping;
+    this.textures['tree'].wrapT = THREE.RepeatWrapping;
     return this.textures['tree'];
   }
   

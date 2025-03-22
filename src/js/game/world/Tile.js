@@ -209,25 +209,36 @@ export class MaterialCache {
       map: groundTexture || null,
       color: 0x8B4513,
       roughness: 0.9,
-      metalness: 0.1
+      metalness: 0.1,
+      normalScale: new THREE.Vector2(0.5, 0.5) // Leichte Oberflächentextur
     });
     
-    // Tree trunk
+    // Tree trunk - Verwendung von Holztextur
     const trunkTexture = this.assetLoader.getTexture('wood');
     const trunkMaterial = new THREE.MeshStandardMaterial({
       map: trunkTexture || null,
       color: 0x8B4513,
-      roughness: 0.9,
-      metalness: 0.1
+      roughness: 0.85,
+      metalness: 0.0,
+      bumpMap: trunkTexture || null, // Textur auch als Bump Map verwenden
+      bumpScale: 0.05, // Subtile Hervorhebungen
+      aoMapIntensity: 0.8, // Ambient Occlusion
+      displacementScale: 0.05
     });
     
-    // Tree foliage
+    // Tree foliage - Verbesserte Blättertextur
     const foliageTexture = this.assetLoader.getTexture('tree');
     const foliageMaterial = new THREE.MeshStandardMaterial({
       map: foliageTexture || null,
-      color: 0x228B22,
-      roughness: 0.8,
-      metalness: 0.1
+      color: 0x2D8A32, // Leicht gedunkeltes Grün
+      roughness: 0.9,   // Blätter sind nicht glänzend
+      metalness: 0.0,   // Keine metallischen Eigenschaften
+      alphaTest: 0.7,   // Scharfe Kanten für Blätter
+      side: THREE.DoubleSide, // Beidseitig rendern
+      flatShading: true, // Für einen stilisierteren Look
+      // Emission für subtilen Lichteffekt in den Blättern
+      emissive: 0x0A2A0A,
+      emissiveIntensity: 0.1,
     });
     
     // Speichere alle Materialien
@@ -361,27 +372,70 @@ export class Tile {
         this.meshes.ground = new THREE.Mesh(baseGeometry, this.materialCache.getMaterial('ground'));
         this.meshes.ground.receiveShadow = true;
         
-        // Baumstamm
-        const trunkGeometry = new THREE.BoxGeometry(0.3, 0.8, 0.3);
-        this.fixCubeUVs(trunkGeometry);
-        
+        // Baumstamm - Verwendung von CylinderGeometry für einen natürlicheren Stamm
+        const trunkGeometry = new THREE.CylinderGeometry(0.08, 0.12, 1.0, 8);
         this.meshes.trunk = new THREE.Mesh(trunkGeometry, this.materialCache.getMaterial('trunk'));
-        this.meshes.trunk.position.y = 0.4; // Halbe Höhe des Stamms
+        this.meshes.trunk.position.y = 0.5; // Halbe Höhe des Stamms
         this.meshes.trunk.castShadow = true;
         this.meshes.trunk.receiveShadow = true;
         
-        // Baumkrone
-        const foliageGeometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-        this.fixCubeUVs(foliageGeometry);
+        // Kleine zufällige Rotation des Stamms für Natürlichkeit
+        this.meshes.trunk.rotation.x = (Math.random() - 0.5) * 0.1;
+        this.meshes.trunk.rotation.z = (Math.random() - 0.5) * 0.1;
         
-        this.meshes.foliage = new THREE.Mesh(foliageGeometry, this.materialCache.getMaterial('foliage'));
-        this.meshes.foliage.position.y = 1.0; // Position über dem Stamm
-        this.meshes.foliage.castShadow = true;
-        this.meshes.foliage.receiveShadow = true;
+        // Mehrere Ebenen von Blättern für eine realistischere Krone
+        const foliageGroup = new THREE.Group();
+        foliageGroup.position.y = 1.0;
         
+        // Untere Ebene - breiter
+        const foliageBottom = new THREE.Mesh(
+          new THREE.ConeGeometry(0.5, 0.7, 8),
+          this.materialCache.getMaterial('foliage')
+        );
+        foliageBottom.position.y = 0.0;
+        foliageBottom.castShadow = true;
+        foliageBottom.receiveShadow = true;
+        
+        // Mittlere Ebene
+        const foliageMiddle = new THREE.Mesh(
+          new THREE.ConeGeometry(0.4, 0.7, 8),
+          this.materialCache.getMaterial('foliage')
+        );
+        foliageMiddle.position.y = 0.5;
+        foliageMiddle.castShadow = true;
+        foliageMiddle.receiveShadow = true;
+        
+        // Obere Ebene - schmaler
+        const foliageTop = new THREE.Mesh(
+          new THREE.ConeGeometry(0.3, 0.6, 8),
+          this.materialCache.getMaterial('foliage')
+        );
+        foliageTop.position.y = 1.0;
+        foliageTop.castShadow = true;
+        foliageTop.receiveShadow = true;
+        
+        // Zufällige Rotation jeder Ebene für mehr Variation
+        foliageBottom.rotation.y = Math.random() * Math.PI * 2;
+        foliageMiddle.rotation.y = Math.random() * Math.PI * 2;
+        foliageTop.rotation.y = Math.random() * Math.PI * 2;
+        
+        // Füge alle Foliage-Ebenen zur Gruppe hinzu
+        foliageGroup.add(foliageBottom);
+        foliageGroup.add(foliageMiddle);
+        foliageGroup.add(foliageTop);
+        
+        // Füge alles zum Container hinzu
         this.container.add(this.meshes.ground);
         this.container.add(this.meshes.trunk);
-        this.container.add(this.meshes.foliage);
+        this.container.add(foliageGroup);
+        
+        // Speichere die Foliage-Gruppe für späteres Referenzieren
+        this.meshes.foliage = foliageGroup;
+        
+        // Zufällige Skalierung des Baums für natürliche Variation (80% - 120% der Größe)
+        const treeScale = 0.8 + Math.random() * 0.4;
+        this.meshes.trunk.scale.set(treeScale, treeScale, treeScale);
+        foliageGroup.scale.set(treeScale, treeScale, treeScale);
         break;
         
       case 4: // Pfad/Weg

@@ -665,34 +665,111 @@ export class Map {
   }
   
   addDecorations() {
-    // Add trees around the map
-    for (let i = 0; i < 30; i++) {
+    // Add trees around the map - mehr Bäume für eine dichtere Vegetation
+    const treeCount = Math.floor(this.width * this.height * 0.03); // 3% der Karte mit Bäumen bedeckt
+    
+    // Verschiedene Baumcluster erstellen
+    this.createTreeClusters(Math.floor(treeCount * 0.7)); // 70% der Bäume in Clustern
+    
+    // Einzelne Bäume für Variation
+    this.createScatteredTrees(Math.floor(treeCount * 0.3)); // 30% der Bäume verstreut
+  }
+  
+  // Bäume in natürlich aussehenden Clustern erstellen
+  createTreeClusters(treeCount) {
+    // Erstelle mehrere Cluster
+    const clusterCount = Math.floor(this.width * this.height * 0.005); // 0.5% der Karte als Cluster-Zentren
+    const clusterCenters = [];
+    
+    // Erstelle Cluster-Zentren
+    for (let i = 0; i < clusterCount; i++) {
       const x = Math.floor(Math.random() * this.width);
       const y = Math.floor(Math.random() * this.height);
       
-      // Only place trees on stone/ground
+      // Nur auf Land platzieren
       if (this.mapData[y][x] === 1) {
-        // Check if there's enough space
-        let hasSpace = true;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            const nx = x + dx;
-            const ny = y + dy;
-            if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height) {
-              if (this.mapData[ny][nx] === 3 || this.mapData[ny][nx] === 2) {
-                hasSpace = false;
-                break;
-              }
-            }
-          }
-          if (!hasSpace) break;
-        }
-        
-        if (hasSpace) {
-          this.mapData[y][x] = 3; // Tree
-        }
+        clusterCenters.push({ x, y });
       }
     }
+    
+    // Keine Cluster? Dann abbrechen
+    if (clusterCenters.length === 0) return;
+    
+    // Bäume um die Cluster herum platzieren
+    for (let i = 0; i < treeCount; i++) {
+      // Wähle ein zufälliges Cluster-Zentrum
+      const clusterIndex = Math.floor(Math.random() * clusterCenters.length);
+      const cluster = clusterCenters[clusterIndex];
+      
+      // Erzeuge Bäume mit einer Normalverteilung um das Zentrum
+      const gaussianRandom = () => {
+        let u = 0, v = 0;
+        while (u === 0) u = Math.random();
+        while (v === 0) v = Math.random();
+        return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+      };
+      
+      // Cluster-Radius: kleine Cluster sehen natürlicher aus
+      const clusterRadius = 3 + Math.random() * 3;
+      
+      // Position mit Normalverteilung um das Zentrum
+      const offsetX = Math.round(gaussianRandom() * clusterRadius);
+      const offsetY = Math.round(gaussianRandom() * clusterRadius);
+      
+      const treeX = Math.min(Math.max(0, cluster.x + offsetX), this.width - 1);
+      const treeY = Math.min(Math.max(0, cluster.y + offsetY), this.height - 1);
+      
+      // Prüfe, ob der Platz für einen Baum geeignet ist
+      this.tryPlaceTree(treeX, treeY);
+    }
+  }
+  
+  // Einzelne Bäume verstreut über die Karte erstellen
+  createScatteredTrees(treeCount) {
+    for (let i = 0; i < treeCount; i++) {
+      const x = Math.floor(Math.random() * this.width);
+      const y = Math.floor(Math.random() * this.height);
+      
+      // Versuche einen Baum zu platzieren
+      this.tryPlaceTree(x, y);
+    }
+  }
+  
+  // Versucht einen Baum an der angegebenen Position zu platzieren
+  tryPlaceTree(x, y) {
+    // Nur auf Land platzieren
+    if (this.mapData[y][x] !== 1) return false;
+    
+    // Prüfe, ob genug Platz vorhanden ist
+    let hasSpace = true;
+    
+    // Prüfe nur direkt angrenzende Felder für natürlichere Baumdichte
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        // Direktes Zentrum überspringen
+        if (dx === 0 && dy === 0) continue;
+        
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx >= 0 && nx < this.width && ny >= 0 && ny < this.height) {
+          // Keine Bäume neben Wänden oder anderen Bäumen
+          if (this.mapData[ny][nx] === 2 || this.mapData[ny][nx] === 3) {
+            hasSpace = false;
+            break;
+          }
+        }
+      }
+      if (!hasSpace) break;
+    }
+    
+    // Wenn genug Platz ist, platziere einen Baum
+    if (hasSpace) {
+      this.mapData[y][x] = 3; // Baum
+      return true;
+    }
+    
+    return false;
   }
   
   createTiles() {
@@ -836,7 +913,7 @@ export class Map {
         break;
         
       case 3: // Baum
-        // Boden unter Baum
+        // Boden unter dem Baum
         if (tile.meshes.ground) {
           batches.treeGround.push({
             position: worldPosition,
@@ -847,17 +924,34 @@ export class Map {
         // Baumstamm
         if (tile.meshes.trunk) {
           batches.treeTrunk.push({
-            position: new THREE.Vector3(worldPosition.x, 0.4, worldPosition.z),
+            position: worldPosition,
             originalMesh: tile.meshes.trunk
           });
         }
         
-        // Baumkrone
+        // Baumkrone - Hole die Meshes aus der Gruppe
         if (tile.meshes.foliage) {
-          batches.treeFoliage.push({
-            position: new THREE.Vector3(worldPosition.x, 1.0, worldPosition.z),
-            originalMesh: tile.meshes.foliage
-          });
+          // Prüfe, ob foliage eine Gruppe oder ein Mesh ist
+          if (tile.meshes.foliage.isGroup) {
+            // Es ist eine Gruppe, sammle alle Kinder (die Meshes sind)
+            tile.meshes.foliage.children.forEach(mesh => {
+              if (mesh.isMesh) {
+                batches.treeFoliage.push({
+                  // Berücksichtige die Position der Gruppe und des Mesh innerhalb der Gruppe
+                  position: new THREE.Vector3().copy(worldPosition).add(
+                    new THREE.Vector3(0, tile.meshes.foliage.position.y, 0)
+                  ),
+                  originalMesh: mesh
+                });
+              }
+            });
+          } else {
+            // Alter Code für Kompatibilität mit älteren Versionen
+            batches.treeFoliage.push({
+              position: worldPosition,
+              originalMesh: tile.meshes.foliage
+            });
+          }
         }
         break;
         
@@ -939,13 +1033,36 @@ export class Map {
       // Hole die Position des Objekts
       const position = item.position;
       
+      // Prüfen, ob alle erforderlichen Eigenschaften vorhanden sind
+      if (!item.originalMesh || !item.originalMesh.geometry) {
+        console.warn("Fehlerhaftes Mesh-Element übersprungen:", item);
+        return; // Überspringe diesen Eintrag
+      }
+      
       // Hole die Geometrie
-      const mesh = item.originalMesh; // Geändert von item.mesh zu item.originalMesh
+      const mesh = item.originalMesh;
       const geometry = mesh.geometry;
       
-      // Hole die Attribute der Geometrie
+      // Hole die Attribute der Geometrie - mit Fehlerbehandlung
       const positionAttribute = geometry.getAttribute('position');
+      if (!positionAttribute) {
+        console.warn(`Mesh ohne 'position'-Attribut übersprungen:`, mesh);
+        return; // Überspringe diesen Eintrag
+      }
+      
+      // Hole die Normal-Attribute mit Fallback
       const normalAttribute = geometry.getAttribute('normal');
+      if (!normalAttribute) {
+        // Berechne Normalen, falls nicht vorhanden
+        geometry.computeVertexNormals();
+        // Prüfe erneut nach Berechnung
+        if (!geometry.getAttribute('normal')) {
+          console.warn(`Konnte Normalen nicht berechnen für:`, mesh);
+          return;
+        }
+      }
+      
+      // UV-Attribut - optional mit Fallback
       const uvAttribute = geometry.getAttribute('uv');
       
       // Matrix für die Transformation
@@ -975,11 +1092,16 @@ export class Map {
         
         // Normale aus dem Attribut holen
         const normal = new THREE.Vector3();
-        normal.fromBufferAttribute(normalAttribute, i);
-        
-        // Normale mit Normalenmatrix transformieren
-        normal.applyMatrix3(normalMatrix);
-        normal.normalize(); // Normalisieren nach der Transformation
+        if (normalAttribute) {
+          normal.fromBufferAttribute(normalAttribute, i);
+          
+          // Normale mit Normalenmatrix transformieren
+          normal.applyMatrix3(normalMatrix);
+          normal.normalize(); // Normalisieren nach der Transformation
+        } else {
+          // Fallback: nach oben zeigend
+          normal.set(0, 1, 0);
+        }
         
         normals.push(normal.x, normal.y, normal.z);
         
@@ -995,6 +1117,12 @@ export class Map {
         }
       }
     });
+    
+    // Überprüfe, ob überhaupt Daten gesammelt wurden
+    if (positions.length === 0) {
+      console.warn(`Keine gültigen Geometrien gefunden für: ${name}`);
+      return;
+    }
     
     // Setze die Buffer-Attribute der zusammengeführten Geometrie
     mergedGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -1515,11 +1643,28 @@ export class Map {
                 mesh: tile.meshes.trunk
               });
             }
+            // Prüfe, ob foliage eine Gruppe oder ein Mesh ist
             if (tile.meshes.foliage) {
-              geometryCollections.treeFoliage.push({
-                position: worldPosition.clone(),
-                mesh: tile.meshes.foliage
-              });
+              if (tile.meshes.foliage.isGroup) {
+                // Es ist eine Gruppe, sammle alle Kinder (die Meshes sind)
+                tile.meshes.foliage.children.forEach(childMesh => {
+                  if (childMesh.isMesh) {
+                    // Position berechnen: Welt + Gruppe + Kind
+                    const childPosition = worldPosition.clone();
+                    childPosition.y += tile.meshes.foliage.position.y + (childMesh.position.y || 0);
+                    
+                    geometryCollections.treeFoliage.push({
+                      position: childPosition,
+                      mesh: childMesh
+                    });
+                  }
+                });
+              } else if (tile.meshes.foliage.isMesh) {
+                geometryCollections.treeFoliage.push({
+                  position: worldPosition.clone(),
+                  mesh: tile.meshes.foliage
+                });
+              }
             }
             break;
             
@@ -1557,10 +1702,21 @@ export class Map {
   createMergedGeometry(type, collection) {
     if (collection.length === 0) return;
     
-    // console.log(`Creating merged geometry for ${type} (${collection.length} items)`);
+    // Sicherheits-Checks: Prüfe, ob das erste Element und sein Mesh gültig sind
+    if (!collection[0] || !collection[0].mesh) {
+      console.warn(`Cannot create merged geometry for ${type}: Invalid mesh reference`);
+      return;
+    }
     
     // Referenz auf das erste Mesh für Material und Geometrie
     const refMesh = collection[0].mesh;
+    
+    // Prüfe, ob Geometrie existiert
+    if (!refMesh.geometry) {
+      console.warn(`Cannot create merged geometry for ${type}: Missing geometry on reference mesh`);
+      return;
+    }
+    
     const refGeometry = refMesh.geometry.clone(); // Clone, um Originalgeometrie nicht zu verändern
     const material = refMesh.material;
     
@@ -1578,13 +1734,30 @@ export class Map {
     
     // Gehe durch jedes Mesh in der Sammlung
     collection.forEach(item => {
+      if (!item || !item.mesh || !item.mesh.geometry) {
+        console.warn(`Skipping invalid mesh in collection for ${type}`);
+        return; // Überspringe ungültige Einträge
+      }
+      
       // Mesh und seine Position
       const mesh = item.mesh;
       const position = item.position;
       
       // Hole Geometrie-Attribute
       const posAttribute = mesh.geometry.getAttribute('position');
+      if (!posAttribute) {
+        console.warn(`Skipping mesh with missing position attribute for ${type}`);
+        return;
+      }
+      
       const normalAttribute = mesh.geometry.getAttribute('normal');
+      if (!normalAttribute) {
+        // Versuche Normalen zu berechnen, falls nicht vorhanden
+        mesh.geometry.computeVertexNormals();
+      }
+      
+      // Nach erneutem Versuch prüfen
+      const normalAttr = mesh.geometry.getAttribute('normal');
       const uvAttribute = mesh.geometry.getAttribute('uv');
       
       // Matrix für die Positionierung
@@ -1606,11 +1779,15 @@ export class Map {
         positions.push(tempVertex.x, tempVertex.y, tempVertex.z);
         
         // Normale richtig transformieren
-        tempNormal.fromBufferAttribute(normalAttribute, i);
-        tempNormal.applyMatrix3(normalMatrix);
-        tempNormal.normalize();
-        
-        normals.push(tempNormal.x, tempNormal.y, tempNormal.z);
+        if (normalAttr) {
+          tempNormal.fromBufferAttribute(normalAttr, i);
+          tempNormal.applyMatrix3(normalMatrix);
+          tempNormal.normalize();
+          normals.push(tempNormal.x, tempNormal.y, tempNormal.z);
+        } else {
+          // Fallback-Normale, falls keine vorhanden
+          normals.push(0, 1, 0);
+        }
         
         // UV-Koordinaten - wichtig für korrekte Texturierung
         if (uvAttribute && uvAttribute.count > i) {
@@ -1648,6 +1825,12 @@ export class Map {
       mesh.visible = false;
     });
     
+    // Überprüfe, ob wir Daten gesammelt haben
+    if (positions.length === 0) {
+      console.warn(`No valid geometries found for type ${type}`);
+      return;
+    }
+    
     // Setze die Attribute der zusammengeführten Geometrie
     mergedGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     mergedGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
@@ -1667,14 +1850,12 @@ export class Map {
     mergedMesh.receiveShadow = refMesh.receiveShadow;
     
     // Stelle sicher, dass die Texturwerte korrekt sind
-    if (material.map) {
+    if (material && material.map) {
       material.map.needsUpdate = true;
     }
     
     // Füge zum Container hinzu
     this.mergedGeometries.add(mergedMesh);
-    
-    // console.log(`Created merged mesh for ${type}: ${positions.length / 3} vertices`);
   }
   
   // Hilfsmethode zur Diagnose der Karte für Debugging
