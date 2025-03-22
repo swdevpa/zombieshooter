@@ -42,41 +42,63 @@ export class Map {
   }
   
   generate() {
-    // Clear any existing map
-    while (this.container.children.length > 0) {
-      this.container.remove(this.container.children[0]);
+    try {
+      console.log("Starting map generation...");
+      
+      // Clear any existing map
+      while (this.container.children.length > 0) {
+        this.container.remove(this.container.children[0]);
+      }
+      
+      console.log("Cleared existing map");
+      
+      this.tiles = [];
+      this.waterTiles = [];
+      
+      // Center the map
+      this.container.position.set(
+        -this.width * this.tileSize / 2,
+        0,
+        -this.height * this.tileSize / 2
+      );
+      
+      console.log("Map container positioned");
+      
+      // Generate map data using a template similar to the provided image
+      console.log("Generating map data...");
+      this.generateMapData();
+      console.log("Map data generated");
+      
+      // Create tiles based on map data
+      console.log("Creating tiles...");
+      this.createTiles();
+      console.log("Tiles created");
+      
+      // Merge geometries for better performance
+      console.log("Merging geometries...");
+      this.mergeGeometriesByType();
+      console.log("Geometries merged");
+      
+      // Generate navigation grid for enemy pathfinding
+      console.log("Generating navigation grid...");
+      this.generateNavigationGrid();
+      console.log("Navigation grid generated");
+      
+      console.log("Map generation complete:", {
+        tilesCreated: this.tiles.length,
+        waterTiles: this.waterTiles.length,
+        containerChildren: this.container.children.length
+      });
+    } catch (error) {
+      console.error("Error in map generation:", error);
     }
-    
-    this.tiles = [];
-    this.waterTiles = [];
-    
-    // Center the map
-    this.container.position.set(
-      -this.width * this.tileSize / 2,
-      0,
-      -this.height * this.tileSize / 2
-    );
-    
-    // Generate map data using a template similar to the provided image
-    this.generateMapData();
-    
-    // Create tiles based on map data
-    this.createTiles();
-    
-    // Merge geometries for better performance
-    this.mergeGeometriesByType();
-    
-    // Generate navigation grid for enemy pathfinding
-    this.generateNavigationGrid();
-    
-    console.log("Map generation complete");
   }
   
   generateMapData() {
     // Create a 2D array for the map data
     this.mapData = Array(this.height).fill().map(() => Array(this.width).fill(0));
     
-    console.log(`Generating procedural map: ${this.currentMapType}`);
+    // console.log(`Generating procedural map: ${this.currentMapType}`);
     
     // Generate base terrain by map type
     switch (this.currentMapType) {
@@ -665,9 +687,9 @@ export class Map {
   }
   
   createTiles() {
-    // Initialisiere MaterialCache, falls noch nicht geschehen
-    if (!MaterialCache.materials.land) {
-      MaterialCache.initialize(this.assetLoader);
+    // Initialisiere MaterialCache als Instanz
+    if (!this.materialCache) {
+      this.materialCache = new MaterialCache(this.assetLoader);
     }
     
     // Leere Tiles-Array für neues Füllen
@@ -732,7 +754,7 @@ export class Map {
     // Erstelle Bounding-Boxen für Chunks
     this.finalizeChunks();
     
-    console.log(`Created ${this.waterTiles.length} water tiles`);
+    // console.log(`Created ${this.waterTiles.length} water tiles`);
   }
   
   // Fügt ein Tile zu einem Chunk hinzu, basierend auf seiner Position
@@ -848,7 +870,7 @@ export class Map {
     
     // Zusammenführen aller Land-Geometrien
     if (batches.land.length > 0) {
-      this.mergeBatch('land', batches.land, MaterialCache.getMaterial('land'));
+      this.mergeBatch('land', batches.land, this.materialCache.getMaterial('land'));
     }
     
     // Wasser behalten wir als individuelles Mesh für Animation
@@ -857,41 +879,41 @@ export class Map {
       const maxWaterPerBatch = 16; // Wasser in kleineren Batches für Animation
       for (let i = 0; i < batches.water.length; i += maxWaterPerBatch) {
         const waterBatch = batches.water.slice(i, i + maxWaterPerBatch);
-        this.mergeBatch(`water_${i}`, waterBatch, MaterialCache.getMaterial('water').combined);
+        this.mergeBatch(`water_${i}`, waterBatch, this.materialCache.getMaterial('water.combined'));
       }
     }
     
     // Zusammenführen der Gras-Geometrien
     if (batches.grass.length > 0) {
-      this.mergeBatch('grass', batches.grass, MaterialCache.getMaterial('grass'));
+      this.mergeBatch('grass', batches.grass, this.materialCache.getMaterial('grass'));
     }
     
     // Zusammenführen der Wand-Geometrien
     if (batches.walls.length > 0) {
-      this.mergeBatch('walls', batches.walls, MaterialCache.getMaterial('wall'));
+      this.mergeBatch('walls', batches.walls, this.materialCache.getMaterial('wall'));
     }
     
     // Zusammenführen der Wand-Basis-Geometrien
     if (batches.wallBase.length > 0) {
-      this.mergeBatch('wallBase', batches.wallBase, MaterialCache.getMaterial('wallBase'));
+      this.mergeBatch('wallBase', batches.wallBase, this.materialCache.getMaterial('wallBase'));
     }
     
     // Zusammenführen der Baum-Boden-Geometrien
     if (batches.treeGround.length > 0) {
-      this.mergeBatch('treeGround', batches.treeGround, MaterialCache.getMaterial('ground'));
+      this.mergeBatch('treeGround', batches.treeGround, this.materialCache.getMaterial('ground'));
     }
     
     // Zusammenführen der Baumstamm-Geometrien
     if (batches.treeTrunk.length > 0) {
-      this.mergeBatch('treeTrunk', batches.treeTrunk, MaterialCache.getMaterial('trunk'));
+      this.mergeBatch('treeTrunk', batches.treeTrunk, this.materialCache.getMaterial('trunk'));
     }
     
     // Zusammenführen der Baumkronen-Geometrien
     if (batches.treeFoliage.length > 0) {
-      this.mergeBatch('treeFoliage', batches.treeFoliage, MaterialCache.getMaterial('foliage'));
+      this.mergeBatch('treeFoliage', batches.treeFoliage, this.materialCache.getMaterial('foliage'));
     }
     
-    console.log('Geometrie-Batching abgeschlossen');
+    // console.log('Geometrie-Batching abgeschlossen');
   }
   
   // Hilfsfunktion zum Zusammenführen einer Gruppe von Geometrien
@@ -971,7 +993,7 @@ export class Map {
     // Füge das zusammengeführte Mesh zum Container hinzu
     this.mergedMeshes.add(mergedMesh);
     
-    console.log(`Batch erstellt: ${name} mit ${batch.length} Geometrien`);
+    // console.log(`Batch erstellt: ${name} mit ${batch.length} Geometrien`);
   }
   
   // Aktualisiere die Chunks für Frustum-Culling
@@ -1172,7 +1194,7 @@ export class Map {
     const centerX = Math.floor(this.width / 2);
     const centerY = Math.floor(this.height / 2);
     
-    console.log(`Creating path from (${startX}, ${startY}) to center`);
+    // console.log(`Creating path from (${startX}, ${startY}) to center`);
     
     // Simple A* pathfinding
     // We'll use a greedy approach for simplicity
@@ -1210,9 +1232,9 @@ export class Map {
     }
     
     if (steps >= maxSteps) {
-      console.warn("Path creation reached maximum steps");
+      // console.warn("Path creation reached maximum steps");
     } else {
-      console.log(`Created path in ${steps} steps`);
+      // console.log(`Created path in ${steps} steps`);
     }
   }
   
@@ -1327,7 +1349,7 @@ export class Map {
     
     // Prüfe NavigationGrid
     if (!this.navigationGrid || !this.navigationGrid[gridZ] || typeof this.navigationGrid[gridZ][gridX] !== 'number') {
-      console.error(`Navigation grid inconsistency at (${gridX}, ${gridZ})!`);
+      // console.error(`Navigation grid inconsistency at (${gridX}, ${gridZ})!`);
       return false;
     }
     
@@ -1336,7 +1358,7 @@ export class Map {
     
     // Debugge während der Suche nach Spawn-Punkten
     if (worldX % 5 === 0 && worldZ % 5 === 0) {
-      console.log(`Checking walkable at world(${worldX.toFixed(1)}, ${worldZ.toFixed(1)}) -> grid(${gridX}, ${gridZ}): ${isWalkable ? 'WALKABLE' : 'NOT WALKABLE'}`);
+      // console.log(`Checking walkable at world(${worldX.toFixed(1)}, ${worldZ.toFixed(1)}) -> grid(${gridX}, ${gridZ}): ${isWalkable ? 'WALKABLE' : 'NOT WALKABLE'}`);
     }
     
     return isWalkable;
@@ -1394,7 +1416,7 @@ export class Map {
   
   // Zusammenführen von Geometrien des gleichen Typs für bessere Performance
   mergeGeometriesByType() {
-    console.log("Merging geometries by type...");
+    // console.log("Merging geometries by type...");
     
     // Sammlungen für verschiedene Geometrietypen
     const geometryCollections = {
@@ -1496,14 +1518,14 @@ export class Map {
       }
     }
     
-    console.log("Geometry merging complete");
+    // console.log("Geometry merging complete");
   }
   
   // Erstellt eine zusammengeführte Geometrie für einen Typ
   createMergedGeometry(type, collection) {
     if (collection.length === 0) return;
     
-    console.log(`Creating merged geometry for ${type} (${collection.length} items)`);
+    // console.log(`Creating merged geometry for ${type} (${collection.length} items)`);
     
     // Referenz auf das erste Mesh für Material und Geometrie
     const refMesh = collection[0].mesh;
@@ -1620,70 +1642,69 @@ export class Map {
     // Füge zum Container hinzu
     this.mergedGeometries.add(mergedMesh);
     
-    console.log(`Created merged mesh for ${type}: ${positions.length / 3} vertices`);
+    // console.log(`Created merged mesh for ${type}: ${positions.length / 3} vertices`);
   }
   
   // Hilfsmethode zur Diagnose der Karte für Debugging
   debugMap() {
-    console.log("Map Debug Information:");
-    console.log(`- Dimensions: ${this.width}x${this.height}`);
-    console.log(`- Chunk Size: ${this.chunkSize}`);
-    console.log(`- Tile Size: ${this.tileSize}`);
-    console.log(`- Chunks: ${Object.keys(this.chunks).length}`);
-    console.log(`- Total Tiles: ${this.tiles.flat().filter(Boolean).length}`);
+    // console.log("Map Debug Information:");
+    // console.log(`- Dimensions: ${this.width}x${this.height}`);
+    // console.log(`- Chunk Size: ${this.chunkSize}`);
+    // console.log(`- Tile Size: ${this.tileSize}`);
+    // console.log(`- Chunks: ${Object.keys(this.chunks).length}`);
+    // console.log(`- Total Tiles: ${this.tiles.flat().filter(Boolean).length}`);
     
-    // Überprüfe den Navigationsgrid
-    let walkableTiles = 0;
-    let unwalkableTiles = 0;
-    let bufferTiles = 0;
-    
+    // Navigation grid stats
     if (this.navigationGrid) {
+      let walkableTiles = 0;
+      let unwalkableTiles = 0;
+      let bufferTiles = 0;
+      
       for (let y = 0; y < this.height; y++) {
         for (let x = 0; x < this.width; x++) {
-          const value = this.navigationGrid[y][x];
-          if (value === 0) unwalkableTiles++;
-          else if (value === 1) walkableTiles++;
-          else if (value === 2) bufferTiles++;
+          if (this.navigationGrid[y][x] === 1) {
+            walkableTiles++;
+          } else if (this.navigationGrid[y][x] === 0) {
+            unwalkableTiles++;
+          } else if (this.navigationGrid[y][x] === 2) {
+            bufferTiles++;
+          }
         }
       }
       
-      console.log(`- Navigation Grid: ${walkableTiles} walkable, ${unwalkableTiles} unwalkable, ${bufferTiles} buffer tiles`);
+      // console.log(`- Navigation Grid: ${walkableTiles} walkable, ${unwalkableTiles} unwalkable, ${bufferTiles} buffer tiles`);
     } else {
-      console.error("Navigation grid not initialized!");
+      // console.error("Navigation grid not initialized!");
     }
     
-    // Prüfe Konsistenz zwischen Tiles und navigationGrid
+    // Check consistency between tiles and navigation grid
+    this.checkConsistency();
+  }
+  
+  checkConsistency() {
     let inconsistencies = 0;
+    
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const tile = this.tiles[y][x];
-        if (!tile) continue;
+        if (!tile || !this.navigationGrid) continue;
         
-        // Wasser (0) und Mauern (2) sollten nicht begehbar sein (navigationGrid = 0)
-        // Land (1) sollte begehbar sein (navigationGrid = 1 oder 2)
-        if ((tile.tileType === 0 || tile.tileType === 2) && this.navigationGrid[y][x] !== 0) {
+        // Water should be unwalkable (0), land should be walkable (1)
+        if (tile.tileType === 'water' && this.navigationGrid[y][x] !== 0) {
+          // console.warn(`Inconsistency at (${x},${y}): Tile type ${tile.tileType} but navigation value ${this.navigationGrid[y][x]}`);
           inconsistencies++;
-          console.warn(`Inconsistency at (${x},${y}): Tile type ${tile.tileType} but navigation value ${this.navigationGrid[y][x]}`);
-        } else if (tile.tileType === 1 && this.navigationGrid[y][x] === 0) {
+        } else if (tile.tileType !== 'water' && tile.tileType !== 'wall' && tile.isWalkable && this.navigationGrid[y][x] === 0) {
+          // console.warn(`Inconsistency at (${x},${y}): Tile type ${tile.tileType} (walkable) but navigation value 0 (unwalkable)`);
           inconsistencies++;
-          console.warn(`Inconsistency at (${x},${y}): Tile type ${tile.tileType} (walkable) but navigation value 0 (unwalkable)`);
         }
       }
     }
     
     if (inconsistencies > 0) {
-      console.error(`Found ${inconsistencies} inconsistencies between tiles and navigation grid!`);
+      // console.error(`Found ${inconsistencies} inconsistencies between tiles and navigation grid!`);
     } else {
-      console.log("Map data is consistent!");
+      // console.log("Map data is consistent!");
     }
-    
-    return {
-      dimensions: { width: this.width, height: this.height },
-      walkableTiles,
-      unwalkableTiles,
-      bufferTiles,
-      inconsistencies
-    };
   }
   
   // Optimiert die Sichtbarkeit von Tiles basierend auf Kamerafrustum und Spielerposition

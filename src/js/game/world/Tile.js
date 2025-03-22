@@ -1,207 +1,274 @@
 import * as THREE from 'three';
 
-// Statische Material-Cache für optimierte Materialwiederverwendung
+// MaterialCache-Klasse für Wiederverwendung von Materialien
 export class MaterialCache {
-  static materials = {
-    water: {
-      combined: null // Vereinfachtes Wassermaterial statt 3 separater Materialien
-    },
-    land: null,
-    wall: null,
-    wallBase: null,
-    ground: null,
-    trunk: null,
-    foliage: null,
-    grass: null
-  };
+  constructor(assetLoader) {
+    this.assetLoader = assetLoader;
+    this.materials = {};
+    this.initialized = false;
+    
+    // Material-Referenzen
+    this.materialRefs = {
+      'water': null,
+      'grass': null,
+      'land': null,
+      'wall': null,
+      'tree': null,
+      'wallBase': null,
+      'ground': null,
+      'trunk': null,
+      'foliage': null
+    };
+    
+    // Initialize cache
+    this.initialize();
+  }
   
-  static initialize(assetLoader) {
-    console.log("Initializing material cache with textures");
+  initialize() {
+    if (this.initialized) return;
     
-    // Vereinfachtes Wassermaterial - nur eine Schicht statt drei
-    this.materials.water.combined = new THREE.MeshStandardMaterial({
-      map: assetLoader.getTexture('water'),
-      transparent: true,
-      opacity: 0.9,
-      color: 0x4d94ff,
-      side: THREE.DoubleSide,
-      roughness: 0.3,
-      metalness: 0.1,
-      depthWrite: true,
-      depthTest: true
-    });
+    // console.log("Initializing material cache with textures");
     
-    // Stelle sicher, dass die Textur richtig geladen ist
-    if (this.materials.water.combined.map) {
-      this.materials.water.combined.map.anisotropy = 4; // Reduziert von 16
-      this.materials.water.combined.map.wrapS = THREE.RepeatWrapping;
-      this.materials.water.combined.map.wrapT = THREE.RepeatWrapping;
-      this.materials.water.combined.map.repeat.set(1, 1);
-      this.materials.water.combined.map.needsUpdate = true;
-      console.log("Water texture loaded successfully");
+    // Create water material
+    this.createWaterMaterial();
+    
+    // Create land material
+    this.createLandMaterial();
+    
+    // Create wall material
+    this.createWallMaterial();
+    
+    // Create tree material
+    this.createTreeMaterial();
+    
+    // Create additional materials for more complex structures
+    this.createWallBaseMaterial();
+    this.createTreeDetailMaterials();
+    
+    this.initialized = true;
+  }
+  
+  createWaterMaterial() {
+    // Get water texture from asset loader
+    const waterTexture = this.assetLoader.getTexture('water');
+    
+    if (waterTexture) {
+      // console.log("Water texture loaded successfully");
+      
+      // Create water material
+      const waterMaterial = new THREE.MeshStandardMaterial({
+        map: waterTexture,
+        color: 0x1a75ff,
+        transparent: true,
+        opacity: 0.8,
+        roughness: 0.2,
+        metalness: 0.1
+      });
+      
+      this.materials['water'] = waterMaterial;
+      this.materialRefs.water = waterMaterial;
     } else {
-      console.warn("Water texture could not be loaded!");
+      // console.warn("Water texture could not be loaded!");
+      
+      // Create fallback water material
+      const waterMaterial = new THREE.MeshStandardMaterial({
+        color: 0x1a75ff,
+        transparent: true,
+        opacity: 0.8
+      });
+      
+      this.materials['water'] = waterMaterial;
+      this.materialRefs.water = waterMaterial;
     }
+  }
+  
+  createLandMaterial() {
+    // Get grass texture from asset loader
+    const grassTexture = this.assetLoader.getTexture('grass');
     
-    // Land/Stein Material
-    this.materials.land = new THREE.MeshStandardMaterial({
-      map: assetLoader.getTexture('grass'),
-      roughness: 0.8,
-      metalness: 0.0,
-      side: THREE.FrontSide
-    });
-    
-    if (this.materials.land.map) {
-      this.materials.land.map.anisotropy = 4;
-      this.materials.land.map.wrapS = THREE.RepeatWrapping;
-      this.materials.land.map.wrapT = THREE.RepeatWrapping;
-      this.materials.land.map.repeat.set(1, 1);
-      this.materials.land.map.needsUpdate = true;
-      console.log("Grass texture for land loaded successfully");
+    if (grassTexture) {
+      // console.log("Grass texture for land loaded successfully");
+      
+      // Create grass material
+      const grassMaterial = new THREE.MeshStandardMaterial({
+        map: grassTexture,
+        color: 0x7cfc00,
+        roughness: 0.8,
+        metalness: 0.1
+      });
+      
+      this.materials['grass'] = grassMaterial;
+      this.materialRefs.grass = grassMaterial;
+      
+      // Auch als 'land' speichern
+      this.materials['land'] = grassMaterial;
+      this.materialRefs.land = grassMaterial;
     } else {
-      console.warn("Grass texture for land could not be loaded!");
+      // console.warn("Grass texture for land could not be loaded!");
+      
+      // Create fallback grass material
+      const grassMaterial = new THREE.MeshStandardMaterial({
+        color: 0x7cfc00
+      });
+      
+      this.materials['grass'] = grassMaterial;
+      this.materialRefs.grass = grassMaterial;
+      
+      // Auch als 'land' speichern
+      this.materials['land'] = grassMaterial;
+      this.materialRefs.land = grassMaterial;
     }
+  }
+  
+  createWallMaterial() {
+    // Get wall texture from asset loader
+    const wallTexture = this.assetLoader.getTexture('wall');
     
-    // Wand-Materialien
-    this.materials.wall = new THREE.MeshStandardMaterial({
-      map: assetLoader.getTexture('wall'),
-      roughness: 0.7,
-      metalness: 0.1,
-      side: THREE.FrontSide
-    });
-    
-    if (this.materials.wall.map) {
-      this.materials.wall.map.anisotropy = 4;
-      this.materials.wall.map.wrapS = THREE.RepeatWrapping;
-      this.materials.wall.map.wrapT = THREE.RepeatWrapping;
-      this.materials.wall.map.repeat.set(1, 1);
-      this.materials.wall.map.needsUpdate = true;
-      console.log("Wall texture loaded successfully");
+    if (wallTexture) {
+      // console.log("Wall texture loaded successfully");
+      
+      // Create wall material
+      const wallMaterial = new THREE.MeshStandardMaterial({
+        map: wallTexture,
+        color: 0x808080,
+        roughness: 0.9,
+        metalness: 0.2
+      });
+      
+      this.materials['wall'] = wallMaterial;
+      this.materialRefs.wall = wallMaterial;
     } else {
-      console.warn("Wall texture could not be loaded!");
+      // console.warn("Wall texture could not be loaded!");
+      
+      // Create fallback wall material
+      const wallMaterial = new THREE.MeshStandardMaterial({
+        color: 0x808080
+      });
+      
+      this.materials['wall'] = wallMaterial;
+      this.materialRefs.wall = wallMaterial;
     }
+  }
+  
+  createTreeMaterial() {
+    // Get tree texture from asset loader
+    const treeTexture = this.assetLoader.getTexture('tree');
     
-    this.materials.wallBase = new THREE.MeshStandardMaterial({
-      map: assetLoader.getTexture('stone'),
-      roughness: 0.8,
-      metalness: 0.0,
-      side: THREE.FrontSide
-    });
-    
-    if (this.materials.wallBase.map) {
-      this.materials.wallBase.map.anisotropy = 4;
-      this.materials.wallBase.map.wrapS = THREE.RepeatWrapping;
-      this.materials.wallBase.map.wrapT = THREE.RepeatWrapping;
-      this.materials.wallBase.map.repeat.set(1, 1);
-      this.materials.wallBase.map.needsUpdate = true;
+    if (treeTexture) {
+      // console.log("Tree texture loaded successfully");
+      
+      // Create tree material
+      const treeMaterial = new THREE.MeshStandardMaterial({
+        map: treeTexture,
+        color: 0x228B22,
+        transparent: true,
+        alphaTest: 0.5,
+        roughness: 0.8,
+        metalness: 0.1
+      });
+      
+      this.materials['tree'] = treeMaterial;
+      this.materialRefs.tree = treeMaterial;
+    } else {
+      // console.warn("Tree texture could not be loaded!");
+      
+      // Create fallback tree material
+      const treeMaterial = new THREE.MeshStandardMaterial({
+        color: 0x228B22
+      });
+      
+      this.materials['tree'] = treeMaterial;
+      this.materialRefs.tree = treeMaterial;
     }
-    
-    // Baum-Materialien
-    this.materials.ground = new THREE.MeshStandardMaterial({
-      map: assetLoader.getTexture('grass'),
+  }
+  
+  // Neue Methode für zusätzliche Materialien
+  createWallBaseMaterial() {
+    // Wall base material
+    const wallBaseTexture = this.assetLoader.getTexture('stone');
+    const wallBaseMaterial = new THREE.MeshStandardMaterial({
+      map: wallBaseTexture || null,
+      color: 0x6d6d6d,
       roughness: 0.9,
-      metalness: 0.0,
-      side: THREE.FrontSide
+      metalness: 0.1
     });
     
-    if (this.materials.ground.map) {
-      this.materials.ground.map.anisotropy = 4;
-      this.materials.ground.map.wrapS = THREE.RepeatWrapping;
-      this.materials.ground.map.wrapT = THREE.RepeatWrapping;
-      this.materials.ground.map.repeat.set(1, 1);
-      this.materials.ground.map.needsUpdate = true;
-      console.log("Grass texture loaded successfully");
-    } else {
-      console.warn("Grass texture could not be loaded!");
-    }
-    
-    this.materials.trunk = new THREE.MeshStandardMaterial({
+    this.materials['wallBase'] = wallBaseMaterial;
+    this.materialRefs.wallBase = wallBaseMaterial;
+  }
+  
+  // Materialien für Baumdetails
+  createTreeDetailMaterials() {
+    // Ground material under trees
+    const groundTexture = this.assetLoader.getTexture('dirt');
+    const groundMaterial = new THREE.MeshStandardMaterial({
+      map: groundTexture || null,
       color: 0x8B4513,
       roughness: 0.9,
-      metalness: 0.0
+      metalness: 0.1
     });
     
-    this.materials.foliage = new THREE.MeshStandardMaterial({
-      map: assetLoader.getTexture('tree'),
-      roughness: 0.8,
-      metalness: 0.0
-    });
-    
-    if (this.materials.foliage.map) {
-      this.materials.foliage.map.anisotropy = 4;
-      this.materials.foliage.map.wrapS = THREE.RepeatWrapping;
-      this.materials.foliage.map.wrapT = THREE.RepeatWrapping;
-      this.materials.foliage.map.repeat.set(1, 1);
-      this.materials.foliage.map.needsUpdate = true;
-      console.log("Tree texture loaded successfully");
-    } else {
-      console.warn("Tree texture could not be loaded!");
-    }
-    
-    // Gras-Material
-    this.materials.grass = new THREE.MeshStandardMaterial({
-      map: assetLoader.getTexture('grass'),
+    // Tree trunk
+    const trunkTexture = this.assetLoader.getTexture('wood');
+    const trunkMaterial = new THREE.MeshStandardMaterial({
+      map: trunkTexture || null,
+      color: 0x8B4513,
       roughness: 0.9,
-      metalness: 0.0,
-      side: THREE.FrontSide
+      metalness: 0.1
     });
     
-    if (this.materials.grass.map) {
-      this.materials.grass.map.anisotropy = 4;
-      this.materials.grass.map.wrapS = THREE.RepeatWrapping;
-      this.materials.grass.map.wrapT = THREE.RepeatWrapping;
-      this.materials.grass.map.repeat.set(1, 1);
-      this.materials.grass.map.needsUpdate = true;
-    }
+    // Tree foliage
+    const foliageTexture = this.assetLoader.getTexture('tree');
+    const foliageMaterial = new THREE.MeshStandardMaterial({
+      map: foliageTexture || null,
+      color: 0x228B22,
+      roughness: 0.8,
+      metalness: 0.1
+    });
     
-    // Prüfe, ob alle Materialien korrekt erstellt wurden
-    this.validateMaterials();
+    // Speichere alle Materialien
+    this.materials['ground'] = groundMaterial;
+    this.materialRefs.ground = groundMaterial;
+    
+    this.materials['trunk'] = trunkMaterial;
+    this.materialRefs.trunk = trunkMaterial;
+    
+    this.materials['foliage'] = foliageMaterial;
+    this.materialRefs.foliage = foliageMaterial;
   }
   
-  static validateMaterials() {
-    // Prüfe alle Materialien und gib Warnungen aus, wenn Probleme bestehen
-    for (const [key, material] of Object.entries(this.materials)) {
-      if (key === 'water') {
-        if (!material.combined) {
-          console.warn(`Material 'water.combined' is missing or invalid`);
-        } else if (!material.combined.map) {
-          console.warn(`Material 'water.combined' has no texture`);
+  // Get a material from the cache
+  getMaterial(key) {
+    // Special case for water.combined (water animation may use this)
+    if (key === 'water.combined') {
+      // Return combined water material if exists
+      if (this.materials['water.combined']) {
+        if (this.materials['water.combined'].map) {
+          return this.materials['water.combined'];
+        } else {
+          // console.warn(`Material 'water.combined' has no texture`);
         }
-      } else if (!material) {
-        console.warn(`Material '${key}' is missing or invalid`);
-      } else if (key !== 'trunk' && !material.map) {
-        console.warn(`Material '${key}' has no texture`);
+      } else {
+        // console.warn(`Material 'water.combined' is missing or invalid`);
       }
     }
-  }
-  
-  static getMaterial(type) {
-    const material = type === 'water' ? this.materials.water.combined : this.materials[type];
     
-    if (!material) {
-      console.warn(`Material '${type}' not found in cache`);
-      // Erzeuge ein einfarbiges Fallback-Material
-      return new THREE.MeshStandardMaterial({
-        color: this.getFallbackColor(type),
-        roughness: 0.8,
-        metalness: 0.0
-      });
+    // Return material from cache if exists
+    if (this.materials[key]) {
+      if (this.materials[key].map) {
+        return this.materials[key];
+      } else {
+        // console.warn(`Material '${key}' has no texture`);
+      }
     }
     
-    return material;
-  }
-  
-  static getFallbackColor(type) {
-    // Wähle eine passende Farbe basierend auf dem Materialtyp
-    switch (type) {
-      case 'water': return 0x4d94ff; // Blau
-      case 'land': case 'wallBase': return 0x9E9E9E; // Grau
-      case 'wall': return 0x795548; // Braun
-      case 'ground': case 'grass': return 0x4CAF50; // Grün
-      case 'trunk': return 0x8B4513; // Braun
-      case 'foliage': return 0x33691E; // Dunkelgrün
-      default: return 0xCCCCCC; // Hellgrau als Default
+    // Return fallback material for known types
+    if (this.materialRefs[key]) {
+      return this.materialRefs[key];
     }
+    
+    // console.warn(`Material '${type}' not found in cache`);
+    return new THREE.MeshStandardMaterial({ color: 0xff00ff }); // Magenta as error color
   }
 }
 
@@ -217,9 +284,7 @@ export class Tile {
     this.meshes = {};
     
     // Stelle sicher, dass der Material-Cache initialisiert ist
-    if (!MaterialCache.materials.water.combined) {
-      MaterialCache.initialize(assetLoader);
-    }
+    this.materialCache = new MaterialCache(assetLoader);
     
     // Erzeuge das Tile basierend auf dem Typ
     this.createMesh();
@@ -236,7 +301,7 @@ export class Tile {
     // Verschiedene Materialien basierend auf dem Tile-Typ
     switch (this.tileType) {
       case 0: // Wasser - vereinfachte Version mit nur einem Mesh statt drei
-        this.meshes.water = new THREE.Mesh(baseGeometry, MaterialCache.getMaterial('water'));
+        this.meshes.water = new THREE.Mesh(baseGeometry, this.materialCache.getMaterial('water'));
         this.meshes.water.position.y = -0.04; // Mittlere Position
         this.meshes.water.receiveShadow = true;
         this.container.add(this.meshes.water);
@@ -247,7 +312,7 @@ export class Tile {
         break;
         
       case 1: // Land/Stein
-        this.meshes.land = new THREE.Mesh(baseGeometry, MaterialCache.getMaterial('land'));
+        this.meshes.land = new THREE.Mesh(baseGeometry, this.materialCache.getMaterial('land'));
         this.meshes.land.receiveShadow = true;
         this.container.add(this.meshes.land);
         break;
@@ -259,13 +324,13 @@ export class Tile {
         // Stelle sicher, dass die UVs für den Würfel korrekt sind
         this.fixCubeUVs(wallGeometry);
         
-        this.meshes.wall = new THREE.Mesh(wallGeometry, MaterialCache.getMaterial('wall'));
+        this.meshes.wall = new THREE.Mesh(wallGeometry, this.materialCache.getMaterial('wall'));
         this.meshes.wall.position.y = 0.5; // Position der Box, damit sie auf dem Boden steht
         this.meshes.wall.castShadow = true;
         this.meshes.wall.receiveShadow = true;
         
         // Basisebene unter der Wand
-        this.meshes.base = new THREE.Mesh(baseGeometry, MaterialCache.getMaterial('wallBase'));
+        this.meshes.base = new THREE.Mesh(baseGeometry, this.materialCache.getMaterial('wallBase'));
         this.meshes.base.position.y = -0.01; // Leicht unter der Wandbasis, um Z-Fighting zu vermeiden
         this.meshes.base.receiveShadow = true;
         
@@ -275,14 +340,14 @@ export class Tile {
         
       case 3: // Baum
         // Basisebene für den Baum
-        this.meshes.ground = new THREE.Mesh(baseGeometry, MaterialCache.getMaterial('ground'));
+        this.meshes.ground = new THREE.Mesh(baseGeometry, this.materialCache.getMaterial('ground'));
         this.meshes.ground.receiveShadow = true;
         
         // Baumstamm
         const trunkGeometry = new THREE.BoxGeometry(0.3, 0.8, 0.3);
         this.fixCubeUVs(trunkGeometry);
         
-        this.meshes.trunk = new THREE.Mesh(trunkGeometry, MaterialCache.getMaterial('trunk'));
+        this.meshes.trunk = new THREE.Mesh(trunkGeometry, this.materialCache.getMaterial('trunk'));
         this.meshes.trunk.position.y = 0.4; // Halbe Höhe des Stamms
         this.meshes.trunk.castShadow = true;
         this.meshes.trunk.receiveShadow = true;
@@ -291,7 +356,7 @@ export class Tile {
         const foliageGeometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
         this.fixCubeUVs(foliageGeometry);
         
-        this.meshes.foliage = new THREE.Mesh(foliageGeometry, MaterialCache.getMaterial('foliage'));
+        this.meshes.foliage = new THREE.Mesh(foliageGeometry, this.materialCache.getMaterial('foliage'));
         this.meshes.foliage.position.y = 1.0; // Position über dem Stamm
         this.meshes.foliage.castShadow = true;
         this.meshes.foliage.receiveShadow = true;
@@ -302,7 +367,7 @@ export class Tile {
         break;
         
       default: // Gras oder Fallback
-        this.meshes.grass = new THREE.Mesh(baseGeometry, MaterialCache.getMaterial('grass'));
+        this.meshes.grass = new THREE.Mesh(baseGeometry, this.materialCache.getMaterial('grass'));
         this.meshes.grass.receiveShadow = true;
         this.container.add(this.meshes.grass);
     }

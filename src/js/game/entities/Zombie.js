@@ -726,4 +726,49 @@ export class Zombie {
     });
     setTimeout(fadeOut, 500);
   }
+
+  logPosition() {
+    // Debug-Methode - Entferne in der Produktion
+    // console.log(`Zombie position: ${this.container.position.x.toFixed(2)}, ${this.container.position.z.toFixed(2)}, isAlive: ${this.isAlive}, path length: ${this.path.length}`);
+  }
+
+  findPath() {
+    // Wenn keine Navigation-Grid vorhanden ist, abbrechen
+    if (!this.game.map.navigationGrid) {
+      // console.error("Navigation grid is undefined!");
+      return;
+    }
+    
+    // Positionen in Grid-Koordinaten umrechnen
+    const startX = Math.floor(this.container.position.x + this.game.map.width / 2);
+    const startY = Math.floor(this.container.position.z + this.game.map.height / 2);
+    
+    const playerX = Math.floor(this.game.player.container.position.x + this.game.map.width / 2);
+    const playerY = Math.floor(this.game.player.container.position.z + this.game.map.height / 2);
+    
+    // Prüfen, ob Start- und Zielpunkt innerhalb der Grenzen liegen
+    if (startX < 0 || startX >= this.game.map.width || startY < 0 || startY >= this.game.map.height ||
+        playerX < 0 || playerX >= this.game.map.width || playerY < 0 || playerY >= this.game.map.height) {
+      
+      // Direkte Pfadsuche verwenden, wenn außerhalb der Grenzen
+      // console.warn("Zombie or player outside grid bounds - using direct path");
+      this.createDirectPath();
+      return;
+    }
+  }
+
+  createPathDebug() {
+    // Debug-Methode - Entferne in der Produktion
+    // console.log(`Zombie path created with ${this.path.length} points`);
+  }
+
+  logMovement() {
+    // Debug-Methode - Entferne in der Produktion
+    // const distanceToPlayer = this.container.position.distanceTo(this.game.player.container.position);
+    // console.log(`Zombie movement: distance to player ${distanceToPlayer.toFixed(2)}, attack range: ${this.attackRange}, target: ${this.targetPosition ? this.targetPosition.x.toFixed(2) + ',' + this.targetPosition.z.toFixed(2) : 'none'}`);
+  }
+
+  logWalkableCheck(position, centerWalkable) {
+    console.log(`Position walkable check: ${position.x.toFixed(2)}, ${position.z.toFixed(2)}, center: ${centerWalkable}`);
+  }
 } 

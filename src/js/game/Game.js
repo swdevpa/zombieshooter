@@ -92,6 +92,7 @@ export class Game {
   }
   
   setupRenderer() {
+    console.log("Setting up renderer...");
     this.renderer = new THREE.WebGLRenderer({ 
       antialias: true, // Anti-Aliasing aktivieren für bessere Qualität
       powerPreference: 'high-performance', // Bessere Performance
@@ -102,6 +103,22 @@ export class Game {
       premultipliedAlpha: true, // Wichtig für korrekte Transparenz-Darstellung
       preserveDrawingBuffer: true // Verhindert Flackern bei transparenten Objekten
     });
+    
+    console.log("WebGLRenderer created");
+    
+    // Überprüfe, ob WebGL verfügbar ist
+    try {
+      const gl = this.renderer.getContext();
+      console.log("WebGL context:", {
+        renderer: this.renderer,
+        glContext: gl ? "Available" : "Not available",
+        vendor: gl.getParameter(gl.VENDOR),
+        renderer: gl.getParameter(gl.RENDERER)
+      });
+    } catch (e) {
+      console.error("Error checking WebGL context:", e);
+    }
+    
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(window.devicePixelRatio);
     
@@ -122,7 +139,14 @@ export class Game {
     // Verhindert fehlende Elemente aufgrund von Timeouts
     this.renderer.info.autoReset = true;
     
+    // Renderer-Element zum DOM hinzufügen
     document.body.appendChild(this.renderer.domElement);
+    console.log("Renderer domElement added to body", {
+      domElement: this.renderer.domElement,
+      width: this.renderer.domElement.width,
+      height: this.renderer.domElement.height,
+      style: this.renderer.domElement.style
+    });
   }
   
   setupCamera() {
@@ -136,9 +160,15 @@ export class Game {
       500                     // Far clipping plane - reduziert für bessere Tiefenpräzision
     );
     
-    // Position will be set in updateCamera method
-    this.camera.position.set(0, 1.6, 0);
-    this.camera.lookAt(0, 1.6, -1);
+    // Position the camera higher and further back for initial view
+    this.camera.position.set(0, 5, 10);
+    this.camera.lookAt(0, 0, 0);
+    
+    console.log("Camera setup:", {
+      position: this.camera.position.clone(),
+      lookAt: new THREE.Vector3(0, 0, 0),
+      fov: this.camera.fov
+    });
   }
   
   setupScene() {
@@ -146,64 +176,106 @@ export class Game {
     this.scene.background = new THREE.Color(0x87CEEB); // Sky blue background
     
     // Add ambient light
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); // Erhöhte Ambient-Helligkeit für weniger Schattenkomplexität
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.5); // Erhöhte Helligkeit für bessere Sichtbarkeit
     this.scene.add(ambientLight);
     
-    // Add directional light with shadows for 3D effect
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6); // Reduzierte Intensität
-    directionalLight.position.set(50, 200, 100);
+    // Add directional light (sun)
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    directionalLight.position.set(50, 200, 100); // Position weit oben für maximale Ausleuchtung
     directionalLight.castShadow = true;
     
-    // Optimierte Schatten-Einstellungen für bessere Performance
-    directionalLight.shadow.mapSize.width = 1024; // Reduzierte Auflösung von 2048 auf 1024
-    directionalLight.shadow.mapSize.height = 1024; // Reduzierte Auflösung von 2048 auf 1024
-    directionalLight.shadow.camera.near = 10; // Erhöht um Präzision zu fokussieren
-    directionalLight.shadow.camera.far = 200; // Verringert für bessere Shadow-Map-Nutzung
-    directionalLight.shadow.bias = -0.002; // Angepasst für weniger Shadow Acne
-    
-    // Reduzierte Shadow-Kamera Größe für bessere Auflösung und Performance
-    const shadowSize = 60; // Reduziert von 100
-    directionalLight.shadow.camera.left = -shadowSize;
-    directionalLight.shadow.camera.right = shadowSize;
-    directionalLight.shadow.camera.top = shadowSize;
-    directionalLight.shadow.camera.bottom = -shadowSize;
-    
-    // Shadow-Blurriness für weichere Schatten mit weniger visuellen Artefakten
-    directionalLight.shadow.radius = 2;
+    // Optimierte Schatteneinstellungen
+    directionalLight.shadow.mapSize.width = 1024;
+    directionalLight.shadow.mapSize.height = 1024;
+    directionalLight.shadow.camera.near = 10;
+    directionalLight.shadow.camera.far = 400;
+    directionalLight.shadow.camera.left = -100;
+    directionalLight.shadow.camera.right = 100;
+    directionalLight.shadow.camera.top = 100;
+    directionalLight.shadow.camera.bottom = -100;
     
     this.scene.add(directionalLight);
-    this.mainLight = directionalLight; // Für einfachen Zugriff speichern
     
-    // Add a secondary light for better illumination - keine Schatten für dieses Licht
-    const secondaryLight = new THREE.DirectionalLight(0xffffff, 0.3);
-    secondaryLight.position.set(-30, 100, -50);
-    this.scene.add(secondaryLight);
+    // Füge ein Hemisphere-Licht hinzu für realistischeres Umgebungslicht
+    const hemisphereLight = new THREE.HemisphereLight(0xFFFFFF, 0x444444, 1.0);
+    this.scene.add(hemisphereLight);
     
-    // Add a ground plane
-    const groundGeometry = new THREE.PlaneGeometry(500, 500);
-    const groundMaterial = new THREE.MeshStandardMaterial({ 
-      color: 0x404040,
-      roughness: 0.8,
-      metalness: 0.1
+    // Optionaler Fog-Effekt (auskommentiert, kann aktiviert werden wenn gewünscht)
+    // this.scene.fog = new THREE.FogExp2(0x87CEEB, 0.01); // Subtiler Nebel für Tiefenwirkung
+    
+    console.log("Scene setup complete with lights", {
+      ambientLight: ambientLight,
+      directionalLight: directionalLight,
+      hemisphereLight: hemisphereLight,
+      sceneChildren: this.scene.children.length
     });
-    this.ground = new THREE.Mesh(groundGeometry, groundMaterial);
-    this.ground.rotation.x = -Math.PI / 2; // Rotate to be horizontal
-    this.ground.position.y = -0.15; // Unter der Map, um schwarze Lücken zu vermeiden
-    this.ground.receiveShadow = true;
-    this.scene.add(this.ground);
     
-    // Add fog for atmosphere - weniger dicht für bessere Sichtbarkeit
-    this.scene.fog = new THREE.Fog(0x87CEEB, 30, 350);
+    // Füge Debug-Objekte hinzu, um zu testen, ob die Rendering-Pipeline funktioniert
+    this.addDebugObjects();
+  }
+  
+  // Debug-Funktion, um sicherzustellen, dass das Rendering grundsätzlich funktioniert
+  addDebugObjects() {
+    // Erstelle einen großen Boden für Orientierung
+    const gridHelper = new THREE.GridHelper(100, 20, 0xff0000, 0x444444);
+    this.scene.add(gridHelper);
+    
+    // Farbige Würfel in der Nähe der Kamera
+    const cubeSize = 1;
+    const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+    
+    // Roter Würfel bei (0,0,0)
+    const redMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    const redCube = new THREE.Mesh(cubeGeometry, redMaterial);
+    redCube.position.set(0, 0.5, 0);
+    this.scene.add(redCube);
+    
+    // Grüner Würfel bei (5,0,0)
+    const greenMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+    const greenCube = new THREE.Mesh(cubeGeometry, greenMaterial);
+    greenCube.position.set(5, 0.5, 0);
+    this.scene.add(greenCube);
+    
+    // Blauer Würfel bei (0,0,5)
+    const blueMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+    const blueCube = new THREE.Mesh(cubeGeometry, blueMaterial);
+    blueCube.position.set(0, 0.5, 5);
+    this.scene.add(blueCube);
+    
+    // Große Sphere bei (0,5,0) - sollte immer sichtbar sein
+    const sphereGeometry = new THREE.SphereGeometry(2, 32, 32);
+    const yellowMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+    const sphere = new THREE.Mesh(sphereGeometry, yellowMaterial);
+    sphere.position.set(0, 3, -5);
+    this.scene.add(sphere);
+    
+    console.log("Debug objects added to scene", {
+      gridHelper: gridHelper,
+      redCube: redCube, 
+      greenCube: greenCube,
+      blueCube: blueCube,
+      sphere: sphere
+    });
   }
   
   setupMap() {
     this.map = new Map(this, this.assetLoader);
-    this.map.generate();
-    console.log("Map setup complete");
-    
-    // Debugging-Informationen für die Map
-    this.map.debugMap();
     this.scene.add(this.map.container);
+    
+    // Debug-Informationen
+    console.log("Setup map with container:", {
+      mapContainerPosition: this.map.container.position,
+      mapContainerRotation: this.map.container.rotation,
+      mapContainerChildren: this.map.container.children.length
+    });
+    
+    this.map.generate();
+    
+    // Debug nach der Map-Generierung
+    console.log("Map generated:", {
+      mapContainerChildren: this.map.container.children.length,
+      tiles: this.map.tiles.length
+    });
   }
   
   setupPlayer() {
@@ -293,6 +365,21 @@ export class Game {
     
     // Check if wave is complete
     this.checkWaveCompletion();
+    
+    // Debug-Information für die ersten Frames
+    if (this.frameCount === undefined) {
+      this.frameCount = 0;
+    }
+    
+    if (this.frameCount < 10) {
+      console.log(`Frame ${this.frameCount} update:`, {
+        playerPos: this.player ? this.player.container.position.clone() : null,
+        cameraPos: this.camera.position.clone(),
+        sceneChildren: this.scene.children.length,
+        mapChildren: this.map.container.children.length
+      });
+      this.frameCount++;
+    }
   }
   
   render() {
@@ -304,6 +391,16 @@ export class Game {
     
     // Stelle sicher, dass der Renderer korrekt initialisiert ist
     this.renderer.clear();
+    
+    // Debug für die ersten Frames
+    if (this.frameCount < 10) {
+      console.log(`Frame ${this.frameCount} render:`, {
+        cameraPosition: this.camera.position.clone(),
+        cameraQuaternion: this.camera.quaternion.clone(),
+        sceneBackground: this.scene.background,
+        rendererInfo: this.renderer.info.render
+      });
+    }
     
     // Szene rendern
     this.renderer.render(this.scene, this.camera);
@@ -359,29 +456,33 @@ export class Game {
     }
 
     if (this.zombieManager.isWaveComplete()) {
-      console.log(`Wave ${this.gameState.wave} complete!`);
-      
-      // Setze Flag, dass wir gerade eine Wellenabschluss-Verarbeitung durchführen
-      this.isProcessingWaveCompletion = true;
-      
-      // Increment wave counter
-      this.gameState.wave++;
-      
-      // Show wave message
-      this.ui.showWaveMessage(this.gameState.wave);
-      
-      console.log(`Preparing next wave: ${this.gameState.wave}`);
-      
-      // Wait 3 seconds before starting the next wave
-      setTimeout(() => {
-        this.zombieManager.startNewWave(this.gameState.wave);
-        
-        // Setze Flag zurück, sodass die nächste Welle überprüft werden kann
-        setTimeout(() => {
-          this.isProcessingWaveCompletion = false;
-        }, 5000); // Mindestens 5 Sekunden zwischen Wellenabschluss-Checks
-      }, 3000);
+      this.completeWave();
     }
+  }
+  
+  completeWave() {
+    // Increment wave
+    this.gameState.wave++;
+    this.isProcessingWaveCompletion = true;
+    
+    // Update UI
+    this.ui.updateWave(this.gameState.wave);
+    
+    // Delay next wave
+    setTimeout(() => {
+      this.prepareNextWave();
+    }, 3000);
+  }
+  
+  prepareNextWave() {
+    // Show wave message
+    this.ui.showWaveMessage(this.gameState.wave);
+    
+    // Start next wave
+    this.zombieManager.startNewWave(this.gameState.wave);
+    
+    // Reset processing flag
+    this.isProcessingWaveCompletion = false;
   }
   
   addScore(points) {

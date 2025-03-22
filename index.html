@@ -77,6 +77,76 @@
       background-color: rgba(255, 255, 255, 0.8);
       border-radius: 50%;
     }
+    /* Health bar styles */
+    #health-container {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      width: 200px;
+      height: 30px;
+      background-color: rgba(0, 0, 0, 0.5);
+      border: 2px solid #fff;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    #health-bar {
+      height: 100%;
+      width: 100%;
+      background-color: #ff3333;
+      transition: width 0.3s ease-in-out;
+    }
+    #health-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      text-shadow: 1px 1px 2px #000;
+    }
+    /* Ammo counter styles */
+    #ammo-container {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background-color: rgba(0, 0, 0, 0.5);
+      border: 2px solid #fff;
+      border-radius: 5px;
+      padding: 5px 10px;
+      font-family: 'Courier New', monospace;
+      color: white;
+      font-weight: bold;
+      text-align: center;
+    }
+    #ammo-value {
+      font-size: 24px;
+    }
+    #ammo-max {
+      font-size: 16px;
+      opacity: 0.8;
+    }
+    #reload-indicator {
+      color: #ffaa33;
+      font-size: 14px;
+      display: none;
+    }
+    #score, #wave {
+      position: absolute;
+      top: 10px;
+      font-family: 'Courier New', monospace;
+      color: white;
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 5px 10px;
+      border-radius: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    #score {
+      left: 10px;
+    }
+    #wave {
+      right: 10px;
+    }
   </style>
 </head>
 <body>
@@ -84,8 +154,15 @@
   <div id="ui">
     <div id="score">Score: 0</div>
     <div id="wave">Wave: 1</div>
-    <div id="health">Health: 100</div>
-    <div id="ammo">Ammo: 30/30</div>
+  </div>
+  <div id="health-container">
+    <div id="health-bar"></div>
+    <div id="health-text">100</div>
+  </div>
+  <div id="ammo-container">
+    <div id="ammo-value">30</div>
+    <div id="ammo-max">/ 30</div>
+    <div id="reload-indicator">RELOADING</div>
   </div>
   <div id="crosshair">
     <div id="crosshair-outer"></div>

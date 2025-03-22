@@ -234,6 +234,25 @@ export class InputManager {
   }
   
   pointerLockError() {
-    console.error('Pointer lock error');
+    // console.error('Pointer lock error');
+  }
+  
+  lockPointer() {
+    // Request pointer lock
+    document.body.requestPointerLock = document.body.requestPointerLock || 
+                                       document.body.mozRequestPointerLock ||
+                                       document.body.webkitRequestPointerLock;
+                                       
+    // Handle errors                                   
+    const pointerLockError = () => {
+      // console.error('Pointer lock error');
+    };
+    
+    document.addEventListener('pointerlockerror', pointerLockError, false);
+    document.addEventListener('mozpointerlockerror', pointerLockError, false);
+    document.addEventListener('webkitpointerlockerror', pointerLockError, false);
+    
+    // Lock the pointer
+    document.body.requestPointerLock();
   }
 } 

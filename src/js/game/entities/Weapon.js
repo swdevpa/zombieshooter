@@ -12,9 +12,19 @@ export class Weapon {
     this.fireRate = 0.3; // Seconds between shots
     this.reloadTime = 2; // Seconds to reload
     this.ammoCapacity = 30;
+    this.maxAmmo = this.ammoCapacity; // Alias für die UI-Klasse
     this.currentAmmo = this.ammoCapacity;
     this.isReloading = false;
     this.lastShotTime = 0;
+    
+    // Animation properties
+    this.reloadAnimation = {
+      active: false,
+      startTime: 0,
+      duration: this.reloadTime * 1000, // ms
+      originalPosition: null,
+      originalRotation: null
+    };
     
     // Bullet management
     this.bullets = [];
@@ -33,7 +43,7 @@ export class Weapon {
     const magazineGeometry = new THREE.BoxGeometry(0.1, 0.2, 0.25);
     
     const weaponMaterial = new THREE.MeshStandardMaterial({
-      map: this.assetLoader.getTexture('player_weapon'),
+      map: this.assetLoader.getTexture('weapon'),
       roughness: 0.5,
       metalness: 0.7
     });
@@ -92,11 +102,17 @@ export class Weapon {
     if (this.isReloading) {
       if (Date.now() - this.reloadStartTime >= this.reloadTime * 1000) {
         this.completeReload();
+      } else {
+        // Update reload animation
+        this.updateReloadAnimation();
       }
     }
   }
   
   updateWeaponSway(deltaTime) {
+    // Skip sway during reload animation
+    if (this.isReloading) return;
+    
     // Create subtle weapon sway based on time
     const time = Date.now() * 0.001;
     const swayX = Math.sin(time * 1.5) * 0.01;
@@ -189,6 +205,12 @@ export class Weapon {
     this.isReloading = true;
     this.reloadStartTime = Date.now();
     
+    // Store original weapon position and rotation for animation
+    this.reloadAnimation.active = true;
+    this.reloadAnimation.startTime = Date.now();
+    this.reloadAnimation.originalPosition = this.mesh.position.clone();
+    this.reloadAnimation.originalRotation = this.mesh.rotation.clone();
+    
     // Update UI to show reloading
     this.game.ui.updateAmmo('Reloading...', this.ammoCapacity);
     
@@ -196,9 +218,53 @@ export class Weapon {
     // this.playSound('reload');
   }
   
+  updateReloadAnimation() {
+    if (!this.reloadAnimation.active) return;
+    
+    const elapsed = Date.now() - this.reloadAnimation.startTime;
+    const progress = Math.min(elapsed / this.reloadAnimation.duration, 1);
+    
+    // Complex reload animation sequence
+    if (progress < 0.3) {
+      // Phase 1: Tilt weapon down and to the left
+      const phase1Progress = progress / 0.3;
+      this.mesh.rotation.x = this.reloadAnimation.originalRotation.x + (Math.PI / 6) * phase1Progress;
+      this.mesh.rotation.z = this.reloadAnimation.originalRotation.z - (Math.PI / 8) * phase1Progress;
+      this.mesh.position.y = this.reloadAnimation.originalPosition.y - 0.1 * phase1Progress;
+    } else if (progress < 0.5) {
+      // Phase 2: Remove magazine animation
+      const phase2Progress = (progress - 0.3) / 0.2;
+      this.magazine.position.y = -0.1 - 0.3 * phase2Progress;
+    } else if (progress < 0.7) {
+      // Phase 3: Insert new magazine animation
+      const phase3Progress = (progress - 0.5) / 0.2;
+      this.magazine.position.y = -0.4 + 0.3 * phase3Progress;
+    } else {
+      // Phase 4: Return to original position
+      const phase4Progress = (progress - 0.7) / 0.3;
+      this.mesh.rotation.x = this.reloadAnimation.originalRotation.x + (Math.PI / 6) * (1 - phase4Progress);
+      this.mesh.rotation.z = this.reloadAnimation.originalRotation.z - (Math.PI / 8) * (1 - phase4Progress);
+      this.mesh.position.y = this.reloadAnimation.originalPosition.y - 0.1 * (1 - phase4Progress);
+    }
+  }
+  
   completeReload() {
     this.isReloading = false;
     this.currentAmmo = this.ammoCapacity;
+    
+    // Reset reload animation
+    this.reloadAnimation.active = false;
+    
+    // Ensure magazine is back to normal position
+    if (this.magazine) {
+      this.magazine.position.set(0, -0.1, -0.1);
+    }
+    
+    // Reset weapon position and rotation
+    if (this.reloadAnimation.originalPosition && this.reloadAnimation.originalRotation) {
+      this.mesh.position.copy(this.reloadAnimation.originalPosition);
+      this.mesh.rotation.copy(this.reloadAnimation.originalRotation);
+    }
     
     // Update UI
     this.game.ui.updateAmmo(this.currentAmmo, this.ammoCapacity);
@@ -215,6 +281,14 @@ export class Weapon {
     this.currentAmmo = this.ammoCapacity;
     this.isReloading = false;
     this.lastShotTime = 0;
+    
+    // Reset reload animation
+    this.reloadAnimation.active = false;
+    
+    // Reset magazine position
+    if (this.magazine) {
+      this.magazine.position.set(0, -0.1, -0.1);
+    }
     
     // Update UI
     this.game.ui.updateAmmo(this.currentAmmo, this.ammoCapacity);

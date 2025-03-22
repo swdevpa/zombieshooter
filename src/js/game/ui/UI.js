@@ -5,8 +5,18 @@ export class UI {
     // UI elements
     this.scoreElement = document.getElementById('score');
     this.waveElement = document.getElementById('wave');
-    this.healthElement = document.getElementById('health');
-    this.ammoElement = document.getElementById('ammo');
+    
+    // Health UI elements
+    this.healthContainer = document.getElementById('health-container');
+    this.healthBar = document.getElementById('health-bar');
+    this.healthText = document.getElementById('health-text');
+    
+    // Ammo UI elements
+    this.ammoContainer = document.getElementById('ammo-container');
+    this.ammoValueElement = document.getElementById('ammo-value');
+    this.ammoMaxElement = document.getElementById('ammo-max');
+    this.reloadIndicator = document.getElementById('reload-indicator');
+    
     this.gameOverElement = document.getElementById('game-over');
     this.finalScoreElement = document.getElementById('final-score');
     this.crosshairElement = document.getElementById('crosshair');
@@ -53,20 +63,91 @@ export class UI {
   }
   
   updateHealth(health) {
-    if (this.healthElement) {
-      this.healthElement.textContent = `Health: ${health}`;
+    // Health bar percentage
+    const healthPercent = Math.max(0, Math.min(100, health / this.game.player.maxHealth * 100));
+    
+    // Update health bar width
+    if (this.healthBar) {
+      this.healthBar.style.width = `${healthPercent}%`;
+      
+      // Change color based on health
+      if (healthPercent > 60) {
+        this.healthBar.style.backgroundColor = '#33cc33'; // Green
+      } else if (healthPercent > 30) {
+        this.healthBar.style.backgroundColor = '#ffcc00'; // Yellow
+      } else {
+        this.healthBar.style.backgroundColor = '#ff3333'; // Red
+      }
     }
+    
+    // Update health text
+    if (this.healthText) {
+      this.healthText.textContent = Math.ceil(health);
+    }
+    
+    // Pulse effect when taking damage
+    if (this.lastHealth && health < this.lastHealth) {
+      this.pulseHealthBar();
+    }
+    
+    // Store last health for comparison
+    this.lastHealth = health;
+  }
+  
+  pulseHealthBar() {
+    if (!this.healthContainer) return;
+    
+    // Add and remove pulse class to create animation effect
+    this.healthContainer.style.boxShadow = '0 0 10px 2px #ff0000';
+    
+    setTimeout(() => {
+      this.healthContainer.style.boxShadow = 'none';
+    }, 300);
   }
   
   updateAmmo(current, max) {
-    if (this.ammoElement) {
-      if (typeof current === 'string') {
-        // For "Reloading..." message
-        this.ammoElement.textContent = current;
+    if (this.ammoValueElement && this.ammoMaxElement && this.reloadIndicator) {
+      if (typeof current === 'string' && current === 'Reloading...') {
+        // Show reloading indicator
+        this.ammoValueElement.style.display = 'none';
+        this.ammoMaxElement.style.display = 'none';
+        this.reloadIndicator.style.display = 'block';
+        
+        // Add reload animation
+        this.animateReloading();
       } else {
-        this.ammoElement.textContent = `Ammo: ${current}/${max}`;
+        // Show ammo count
+        this.ammoValueElement.style.display = 'block';
+        this.ammoMaxElement.style.display = 'block';
+        this.reloadIndicator.style.display = 'none';
+        
+        // Update ammo values
+        this.ammoValueElement.textContent = current;
+        this.ammoMaxElement.textContent = `/ ${max}`;
+        
+        // Change color based on ammo
+        if (current / max <= 0.25) {
+          this.ammoValueElement.style.color = '#ff3333'; // Red when low ammo
+        } else {
+          this.ammoValueElement.style.color = 'white';
+        }
       }
     }
+  }
+  
+  animateReloading() {
+    // Implement a simple reload animation for the UI
+    let dots = 0;
+    const maxDots = 3;
+    this.reloadAnimInterval = setInterval(() => {
+      dots = (dots % maxDots) + 1;
+      this.reloadIndicator.textContent = `RELOADING${''.padEnd(dots, '.')}`;
+    }, 300);
+    
+    // Clear interval when reload completes (after weapon's reload time)
+    setTimeout(() => {
+      clearInterval(this.reloadAnimInterval);
+    }, this.game.player.weapon.reloadTime * 1000);
   }
   
   showGameOver(score) {

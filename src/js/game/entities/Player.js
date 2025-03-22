@@ -50,7 +50,7 @@ export class Player {
     });
     
     const headMaterial = new THREE.MeshStandardMaterial({
-      map: this.assetLoader.getTexture('player_head'),
+      map: this.assetLoader.getTexture('playerHead'),
       roughness: 0.8
     });
     

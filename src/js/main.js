@@ -29,7 +29,7 @@ async function init() {
       game.restart();
     });
   } catch (error) {
-    console.error('Error initializing game:', error);
+    // console.error('Error initializing game:', error);
     document.getElementById('loading').textContent = 'Error loading game. Please refresh.';
   }
 }
