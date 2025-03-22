@@ -5,6 +5,7 @@ import { InputManager } from './managers/InputManager.js';
 import { Map } from './world/Map.js';
 import { PixelFilter } from '../utils/PixelFilter.js';
 import { UI } from './ui/UI.js';
+import { CullingManager } from './managers/CullingManager.js';
 
 export class Game {
   constructor(assetLoader) {
@@ -30,15 +31,6 @@ export class Game {
     this.cameraPosition = new THREE.Vector3();
     this.cameraLookAt = new THREE.Vector3();
     this.cameraSmoothing = 0.8; // Höherer Wert = weniger Smoothing (0-1)
-    
-    // Sichtbarkeits-Optimierung
-    this.viewDistance = 50; // Sichtweite in Spieleinheiten
-    this.cullingEnabled = true; // Culling aktivieren/deaktivieren
-    this.lastPlayerPosition = new THREE.Vector3(); // Letzte Position für Culling-Updates
-    this.cullingUpdateThreshold = 5; // Minimale Bewegung für Culling-Update
-    this.cullingUpdateFrequency = 0.2; // Sekunden zwischen Culling-Updates
-    this.cullingTimer = 0; // Timer für Culling-Updates
-    this.visibleTiles = new Set(); // Set der aktuell sichtbaren Tiles
     
     // FPS-Anzeige
     this.fpsCounter = {
@@ -74,6 +66,9 @@ export class Game {
     
     // Setup UI
     this.setupUI();
+    
+    // Setup culling manager
+    this.setupCullingManager();
     
     // Setup pixel filter for retro look
     this.setupPixelFilter();
@@ -360,8 +355,8 @@ export class Game {
     // Update map (z.B. für Wasser-Animation)
     this.map.update(deltaTime);
     
-    // Culling-Optimierung
-    this.updateCulling(deltaTime);
+    // Update culling manager
+    this.cullingManager.update(deltaTime);
     
     // Check if wave is complete
     this.checkWaveCompletion();
@@ -521,127 +516,17 @@ export class Game {
     this.start();
   }
   
-  // Neue Methode für Culling-Update
-  updateCulling(deltaTime) {
-    if (!this.cullingEnabled || !this.player || !this.map) return;
+  setupCullingManager() {
+    // Erstelle und initialisiere den CullingManager
+    this.cullingManager = new CullingManager(this);
+    this.cullingManager.init();
     
-    // Aktualisiere Timer
-    this.cullingTimer += deltaTime;
-    
-    // Berechne Distanz zur letzten Position, bei der Culling aktualisiert wurde
-    const distanceToLastUpdate = this.player.container.position.distanceTo(this.lastPlayerPosition);
-    
-    // Aktualisiere Culling nur, wenn sich Spieler genug bewegt hat oder Timer abgelaufen ist
-    if (distanceToLastUpdate > this.cullingUpdateThreshold || this.cullingTimer >= this.cullingUpdateFrequency) {
-      // Position für nächstes Update merken
-      this.lastPlayerPosition.copy(this.player.container.position);
-      this.cullingTimer = 0;
-      
-      // Führe Culling durch
-      this.performCulling();
-    }
-  }
-  
-  // Bestimmt, welche Elemente sichtbar sein sollten
-  performCulling() {
-    if (!this.map || !this.player) return;
-    
-    const playerPosition = this.player.container.position;
-    const viewDistanceSquared = this.viewDistance * this.viewDistance;
-    const previouslyVisible = new Set(this.visibleTiles);
-    this.visibleTiles.clear();
-    
-    // Kamera-Frustum für genauere Sichtbarkeitsbestimmung
-    this.camera.updateMatrixWorld(true);
-    const frustum = new THREE.Frustum();
-    frustum.setFromProjectionMatrix(
-      new THREE.Matrix4().multiplyMatrices(
-        this.camera.projectionMatrix,
-        this.camera.matrixWorldInverse
-      )
-    );
-    
-    // Nutze die Chunk-basierte Optimierung der Karte
-    this.map.optimizeVisibility(frustum, playerPosition, this.viewDistance);
-    
-    // Da die Sichtbarkeit der Tiles jetzt in der Map-Klasse verwaltet wird,
-    // sammeln wir nur noch die sichtbaren Tile-Koordinaten für die Zombie-Optimierung
-    for (let y = 0; y < this.map.height; y++) {
-      for (let x = 0; x < this.map.width; x++) {
-        const tile = this.map.tiles[y][x];
-        if (!tile || !tile.container.visible) continue;
-        
-        // Speichere sichtbare Tiles
-        this.visibleTiles.add(`${x},${y}`);
-      }
+    // Debug-Modus kann über URL-Parameter aktiviert werden
+    if (window.location.search.includes('debug=true')) {
+      this.cullingManager.setDebugMode(true);
     }
     
-    // Optimiere Zombies - Zeige nur Zombies in der Nähe sichtbarer Tiles
-    if (this.zombieManager && this.zombieManager.zombies) {
-      this.zombieManager.zombies.forEach(zombie => {
-        const zombiePosition = zombie.container.position;
-        
-        // Immer sichtbar für sehr nahe Zombies
-        const distanceToPlayer = zombiePosition.distanceTo(playerPosition);
-        if (distanceToPlayer < 10) {
-          zombie.container.visible = true;
-          return;
-        }
-        
-        // Prüfe, ob Zombie in der Nähe eines sichtbaren Tiles ist
-        const zombieTileX = Math.floor((zombiePosition.x - this.map.container.position.x) / this.map.tileSize);
-        const zombieTileZ = Math.floor((zombiePosition.z - this.map.container.position.z) / this.map.tileSize);
-        
-        // Check surrounding tiles (3x3 area)
-        let isNearVisibleTile = false;
-        for (let dz = -1; dz <= 1; dz++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            const tileKey = `${zombieTileX + dx},${zombieTileZ + dz}`;
-            if (this.visibleTiles.has(tileKey)) {
-              isNearVisibleTile = true;
-              break;
-            }
-          }
-          if (isNearVisibleTile) break;
-        }
-        
-        zombie.container.visible = isNearVisibleTile;
-      });
-    }
-  }
-  
-  // Methode zum Einstellen der Sichtweite
-  setViewDistance(distance) {
-    this.viewDistance = distance;
-    // Sofortiges Update erzwingen
-    this.lastPlayerPosition.set(0, 0, 0);
-    this.performCulling();
-  }
-  
-  // Culling ein-/ausschalten
-  setCullingEnabled(enabled) {
-    this.cullingEnabled = enabled;
-    
-    // Wenn deaktiviert, alles sichtbar machen
-    if (!this.cullingEnabled && this.map) {
-      for (let y = 0; y < this.map.height; y++) {
-        for (let x = 0; x < this.map.width; x++) {
-          if (this.map.tiles[y] && this.map.tiles[y][x]) {
-            this.map.tiles[y][x].container.visible = true;
-          }
-        }
-      }
-      
-      // Alle Zombies sichtbar machen
-      if (this.zombieManager && this.zombieManager.zombies) {
-        this.zombieManager.zombies.forEach(zombie => {
-          zombie.container.visible = true;
-        });
-      }
-    } else if (this.cullingEnabled) {
-      // Wenn aktiviert, sofort culling durchführen
-      this.performCulling();
-    }
+    console.log("Culling Manager initialized");
   }
   
   // FPS-Zähler einrichten

@@ -18,6 +18,14 @@ export class Zombie {
     this.points = 50; // Score points for killing this zombie
     this.animationComplete = false; // Flag to track if death animation is done
     
+    // Level of Detail (LOD) System
+    this.currentDetailLevel = 2; // 0 = low, 1 = medium, 2 = high
+    this.detailLevels = {
+      high: null,   // Level 2 - Vollständiges Modell
+      medium: null, // Level 1 - Vereinfachtes Modell
+      low: null     // Level 0 - Einfachste Darstellung
+    };
+    
     // Pathfinding
     this.pathUpdateInterval = 1; // Seconds between path updates
     this.lastPathUpdate = 0;
@@ -38,6 +46,16 @@ export class Zombie {
   }
   
   createMesh() {
+    // Create all detail levels
+    this.createHighDetailMesh();
+    this.createMediumDetailMesh();
+    this.createLowDetailMesh();
+    
+    // Set initial detail level
+    this.setDetailLevel(2); // Start with high detail
+  }
+  
+  createHighDetailMesh() {
     // Create a more detailed 3D zombie model
     const bodyGeometry = new THREE.BoxGeometry(0.7, 1.1, 0.4);
     const headGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
@@ -59,77 +77,188 @@ export class Zombie {
     });
     
     // Create body parts with slight deformation for undead look
-    this.body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    this.body.position.y = 0.55;
-    this.body.rotation.z = THREE.MathUtils.degToRad(-5); // Slight tilt
-    this.body.castShadow = true;
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = 0.55;
+    body.rotation.z = THREE.MathUtils.degToRad(-5); // Slight tilt
+    body.castShadow = true;
     
-    this.head = new THREE.Mesh(headGeometry, headMaterial);
-    this.head.position.y = 1.35;
-    this.head.rotation.z = THREE.MathUtils.degToRad(15); // Tilted head
-    this.head.castShadow = true;
+    const head = new THREE.Mesh(headGeometry, headMaterial);
+    head.position.y = 1.35;
+    head.rotation.z = THREE.MathUtils.degToRad(15); // Tilted head
+    head.castShadow = true;
     
-    this.leftArm = new THREE.Mesh(armGeometry, bodyMaterial);
-    this.leftArm.position.set(-0.45, 0.6, 0);
-    this.leftArm.rotation.z = THREE.MathUtils.degToRad(20); // Outstretched arm
-    this.leftArm.castShadow = true;
+    const leftArm = new THREE.Mesh(armGeometry, bodyMaterial);
+    leftArm.position.set(-0.45, 0.6, 0);
+    leftArm.rotation.z = THREE.MathUtils.degToRad(20); // Outstretched arm
+    leftArm.castShadow = true;
     
-    this.rightArm = new THREE.Mesh(armGeometry, bodyMaterial);
-    this.rightArm.position.set(0.45, 0.6, 0);
-    this.rightArm.rotation.z = THREE.MathUtils.degToRad(-30); // Outstretched arm
-    this.rightArm.castShadow = true;
+    const rightArm = new THREE.Mesh(armGeometry, bodyMaterial);
+    rightArm.position.set(0.45, 0.6, 0);
+    rightArm.rotation.z = THREE.MathUtils.degToRad(-30); // Outstretched arm
+    rightArm.castShadow = true;
     
-    this.leftLeg = new THREE.Mesh(legGeometry, bodyMaterial);
-    this.leftLeg.position.set(-0.2, 0.0, 0);
-    this.leftLeg.castShadow = true;
+    const leftLeg = new THREE.Mesh(legGeometry, bodyMaterial);
+    leftLeg.position.set(-0.2, 0.0, 0);
+    leftLeg.castShadow = true;
     
-    this.rightLeg = new THREE.Mesh(legGeometry, bodyMaterial);
-    this.rightLeg.position.set(0.2, 0.0, 0);
-    this.rightLeg.castShadow = true;
+    const rightLeg = new THREE.Mesh(legGeometry, bodyMaterial);
+    rightLeg.position.set(0.2, 0.0, 0);
+    rightLeg.castShadow = true;
     
     // Add all parts to the container
-    this.mesh = new THREE.Group();
-    this.mesh.add(this.body);
-    this.mesh.add(this.head);
-    this.mesh.add(this.leftArm);
-    this.mesh.add(this.rightArm);
-    this.mesh.add(this.leftLeg);
-    this.mesh.add(this.rightLeg);
+    this.detailLevels.high = new THREE.Group();
+    this.detailLevels.high.add(body);
+    this.detailLevels.high.add(head);
+    this.detailLevels.high.add(leftArm);
+    this.detailLevels.high.add(rightArm);
+    this.detailLevels.high.add(leftLeg);
+    this.detailLevels.high.add(rightLeg);
     
-    this.container.add(this.mesh);
+    // Store references für Animation
+    this.body = body;
+    this.head = head;
+    this.leftArm = leftArm;
+    this.rightArm = rightArm;
+    this.leftLeg = leftLeg;
+    this.rightLeg = rightLeg;
     
-    // Create health bar
-    this.createHealthBar();
+    // Create health bar for high detail
+    this.createHealthBar(this.detailLevels.high);
   }
   
-  createHealthBar() {
-    // Create container for health bar that will always face camera
-    this.healthBarContainer = new THREE.Group();
-    this.healthBarContainer.position.set(0, 1, 0); // Position above zombie
+  createMediumDetailMesh() {
+    // Vereinfachte Version mit weniger Teilen
+    const bodyGeometry = new THREE.BoxGeometry(0.7, 1.6, 0.4);
+    const armGeometry = new THREE.BoxGeometry(0.2, 0.7, 0.2);
+    const legGeometry = new THREE.BoxGeometry(0.25, 0.6, 0.25);
     
-    // Background of health bar
-    const bgGeometry = new THREE.PlaneGeometry(0.6, 0.1);
-    const bgMaterial = new THREE.MeshBasicMaterial({
+    // Material mit reduzierter Qualität
+    const bodyMaterial = new THREE.MeshLambertMaterial({
+      map: this.assetLoader.getTexture('zombie'),
+      color: 0x8BC34A
+    });
+    
+    // Weniger Details, kombinierter Körper + Kopf
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = 0.8;
+    body.castShadow = true;
+    
+    const leftArm = new THREE.Mesh(armGeometry, bodyMaterial);
+    leftArm.position.set(-0.45, 0.6, 0);
+    leftArm.rotation.z = THREE.MathUtils.degToRad(20);
+    leftArm.castShadow = true;
+    
+    const rightArm = new THREE.Mesh(armGeometry, bodyMaterial);
+    rightArm.position.set(0.45, 0.6, 0);
+    rightArm.rotation.z = THREE.MathUtils.degToRad(-30);
+    rightArm.castShadow = true;
+    
+    // Vereinfachte Beine
+    const legs = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 0.6, 0.4),
+      bodyMaterial
+    );
+    legs.position.y = 0;
+    legs.castShadow = true;
+    
+    // Container erstellen
+    this.detailLevels.medium = new THREE.Group();
+    this.detailLevels.medium.add(body);
+    this.detailLevels.medium.add(leftArm);
+    this.detailLevels.medium.add(rightArm);
+    this.detailLevels.medium.add(legs);
+    
+    // Einfache Health Bar
+    this.createHealthBar(this.detailLevels.medium);
+  }
+  
+  createLowDetailMesh() {
+    // Extrem vereinfachte Version: Ein einziger Block
+    const zombieGeometry = new THREE.BoxGeometry(0.7, 1.8, 0.4);
+    const zombieMaterial = new THREE.MeshBasicMaterial({
+      color: 0x8BC34A
+    });
+    
+    const zombieMesh = new THREE.Mesh(zombieGeometry, zombieMaterial);
+    zombieMesh.position.y = 0.9;
+    zombieMesh.castShadow = true;
+    
+    // Container erstellen
+    this.detailLevels.low = new THREE.Group();
+    this.detailLevels.low.add(zombieMesh);
+    
+    // Keine Health Bar in niedrigster Detail-Stufe
+  }
+  
+  createHealthBar(parent) {
+    // Create health bar background
+    const barWidth = 0.8;
+    const barHeight = 0.1;
+    
+    const barGeometry = new THREE.PlaneGeometry(barWidth, barHeight);
+    const barBackgroundMaterial = new THREE.MeshBasicMaterial({
       color: 0x333333,
-      side: THREE.DoubleSide
+      transparent: true,
+      opacity: 0.7
     });
-    this.healthBarBg = new THREE.Mesh(bgGeometry, bgMaterial);
     
-    // Foreground of health bar (shows current health)
-    const fgGeometry = new THREE.PlaneGeometry(0.6, 0.1);
-    const fgMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00FF00,
-      side: THREE.DoubleSide
+    this.healthBarBackground = new THREE.Mesh(barGeometry, barBackgroundMaterial);
+    this.healthBarBackground.position.y = 2.0;
+    
+    // Create health bar foreground
+    const healthBarMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff0000,
+      transparent: true,
+      opacity: 0.9
     });
-    this.healthBarFg = new THREE.Mesh(fgGeometry, fgMaterial);
-    this.healthBarFg.position.z = 0.01; // Slightly in front of background
     
-    // Add to container
-    this.healthBarContainer.add(this.healthBarBg);
-    this.healthBarContainer.add(this.healthBarFg);
+    this.healthBar = new THREE.Mesh(barGeometry, healthBarMaterial);
+    this.healthBar.position.y = 2.0;
+    this.healthBar.position.z = 0.01; // Slightly in front of background
     
-    // Add to zombie
-    this.container.add(this.healthBarContainer);
+    // Update health bar scale based on health
+    this.healthBar.scale.x = this.health / this.maxHealth;
+    this.healthBar.position.x = -barWidth / 2 + (barWidth * this.healthBar.scale.x / 2);
+    
+    // Add to parent
+    parent.add(this.healthBarBackground);
+    parent.add(this.healthBar);
+  }
+  
+  // Setzt die Detail-Stufe (0 = niedrig, 1 = mittel, 2 = hoch)
+  setDetailLevel(level) {
+    if (this.currentDetailLevel === level) return;
+    
+    // Entferne aktuelle Mesh-Version
+    if (this.mesh) {
+      this.container.remove(this.mesh);
+      this.mesh = null;
+    }
+    
+    // Setze neue Detail-Stufe
+    this.currentDetailLevel = level;
+    
+    // Wähle entsprechendes Mesh
+    switch(level) {
+      case 0:
+        this.mesh = this.detailLevels.low;
+        break;
+      case 1:
+        this.mesh = this.detailLevels.medium;
+        break;
+      case 2:
+      default:
+        this.mesh = this.detailLevels.high;
+        break;
+    }
+    
+    // Füge neues Mesh hinzu
+    if (this.mesh) {
+      this.container.add(this.mesh);
+    }
+    
+    // Aktualisiere Health Bar
+    this.updateHealthBar();
   }
   
   update(deltaTime) {
@@ -161,23 +290,23 @@ export class Zombie {
   updateHealthBar() {
     // Make health bar face camera
     if (this.game.camera) {
-      this.healthBarContainer.lookAt(this.game.camera.position);
+      this.healthBarBackground.lookAt(this.game.camera.position);
     }
     
     // Update health bar scale based on current health
     const healthPercent = this.health / this.maxHealth;
-    this.healthBarFg.scale.x = healthPercent;
+    this.healthBar.scale.x = healthPercent;
     
     // Adjust position so it scales from left to right
-    this.healthBarFg.position.x = (1 - healthPercent) * -0.3;
+    this.healthBar.position.x = (1 - healthPercent) * -0.3;
     
     // Update color based on health
     if (healthPercent > 0.6) {
-      this.healthBarFg.material.color.set(0x00FF00); // Green
+      this.healthBar.material.color.set(0x00FF00); // Green
     } else if (healthPercent > 0.3) {
-      this.healthBarFg.material.color.set(0xFFFF00); // Yellow
+      this.healthBar.material.color.set(0xFFFF00); // Yellow
     } else {
-      this.healthBarFg.material.color.set(0xFF0000); // Red
+      this.healthBar.material.color.set(0xFF0000); // Red
     }
   }
   
@@ -518,15 +647,23 @@ export class Zombie {
   }
   
   updateCollisionFeedback() {
+    if (!this.mesh || !this.mesh.children) {
+      return; // Skip if mesh or children don't exist
+    }
+    
     if (this.isColliding) {
       // Show zombie is stuck by changing color
       this.mesh.children.forEach(child => {
-        child.material.color.set(0xAA5500); // Orange tint
+        if (child.material) {
+          child.material.color.set(0xAA5500); // Orange tint
+        }
       });
     } else {
       // Restore normal color
       this.mesh.children.forEach(child => {
-        child.material.color.set(0x8BC34A); // Normal green tint
+        if (child.material) {
+          child.material.color.set(0x8BC34A); // Normal green tint
+        }
       });
     }
   }
@@ -629,13 +766,19 @@ export class Zombie {
   }
   
   playAttackAnimation() {
+    if (!this.mesh || !this.mesh.children) {
+      return; // Skip if mesh or children don't exist
+    }
+    
     // Simple attack animation - flash red
     this.mesh.children.forEach(child => {
+      if (!child.material) return;
+      
       const originalColor = child.material.color.clone();
       child.material.color.set(0xFF0000);
       
       setTimeout(() => {
-        if (this.isAlive) {
+        if (this.isAlive && child.material) {
           child.material.color.copy(originalColor);
         }
       }, 200);
@@ -705,7 +848,7 @@ export class Zombie {
     this.mesh.position.y = 0.2; // Lower position to lie on ground
     
     // Hide health bar
-    this.healthBarContainer.visible = false;
+    this.healthBarBackground.visible = false;
     
     // Fade out
     const fadeOut = () => {

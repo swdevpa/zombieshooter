@@ -302,153 +302,330 @@ export class MaterialCache {
 }
 
 export class Tile {
-  constructor(assetLoader, tileType) {
+  constructor(game, assetLoader, x, z, tileType, height = 1, special = null) {
+    this.game = game;
     this.assetLoader = assetLoader;
+    this.x = x;
+    this.z = z;
     this.tileType = tileType;
+    this.height = height;
+    this.special = special;
     
-    // Container für das Tile
+    // Level of Detail (LOD) System
+    this.currentDetailLevel = 'high'; // high, medium, low
+    this.detailLevels = {
+      high: {}, // Detaillierte Meshes für nahe Kamera
+      medium: {}, // Mittlere Detailstufe
+      low: {} // Niedrige Detailstufe für weit entfernte Objekte
+    };
+    
+    // Create container for this tile
     this.container = new THREE.Group();
     
-    // Objekte des Tiles
-    this.meshes = {};
+    // Position container in the world
+    this.container.position.set(x, 0, z);
     
-    // Stelle sicher, dass der Material-Cache initialisiert ist
-    this.materialCache = new MaterialCache(assetLoader);
-    
-    // Erzeuge das Tile basierend auf dem Typ
+    // Create the visual representation
     this.createMesh();
   }
   
   createMesh() {
-    // Basisfläche für alle Tile-Typen - leicht vergrößert, um Lücken zu vermeiden
-    const baseGeometry = new THREE.PlaneGeometry(1.02, 1.02); // Überlappung von 0.02 Einheiten
-    baseGeometry.rotateX(-Math.PI / 2); // Horizontal ausrichten
-    
-    // Stelle sicher, dass die UV-Koordinaten korrekt sind
-    this.fixUVs(baseGeometry);
-    
-    // Verschiedene Materialien basierend auf dem Tile-Typ
+    // Für jede Detailstufe die passenden Meshes erzeugen
     switch (this.tileType) {
-      case 0: // Wasser - vereinfachte Version mit nur einem Mesh statt drei
-        this.meshes.water = new THREE.Mesh(baseGeometry, this.materialCache.getMaterial('water'));
-        this.meshes.water.position.y = -0.04; // Mittlere Position
-        this.meshes.water.receiveShadow = true;
-        this.container.add(this.meshes.water);
-        
-        // Deaktiviere Frustum-Culling für Wasser (verhindert Ausblenden bei Kamerabewegungen)
-        this.container.frustumCulled = false;
-        this.meshes.water.frustumCulled = false;
+      case 0: // Wasser
+        this.createWaterMesh();
         break;
-        
       case 1: // Land/Stein
-        this.meshes.land = new THREE.Mesh(baseGeometry, this.materialCache.getMaterial('land'));
-        this.meshes.land.receiveShadow = true;
-        this.container.add(this.meshes.land);
+        this.createLandMesh();
         break;
-        
-      case 2: // Wand
-        // Für Wände eine Box erstellen
-        const wallGeometry = new THREE.BoxGeometry(1, 1, 1);
-        
-        // Stelle sicher, dass die UVs für den Würfel korrekt sind
-        this.fixCubeUVs(wallGeometry);
-        
-        this.meshes.wall = new THREE.Mesh(wallGeometry, this.materialCache.getMaterial('wall'));
-        this.meshes.wall.position.y = 0.5; // Position der Box, damit sie auf dem Boden steht
-        this.meshes.wall.castShadow = true;
-        this.meshes.wall.receiveShadow = true;
-        
-        // Basisebene unter der Wand
-        this.meshes.base = new THREE.Mesh(baseGeometry, this.materialCache.getMaterial('wallBase'));
-        this.meshes.base.position.y = -0.01; // Leicht unter der Wandbasis, um Z-Fighting zu vermeiden
-        this.meshes.base.receiveShadow = true;
-        
-        this.container.add(this.meshes.wall);
-        this.container.add(this.meshes.base);
+      case 2: // Wand/Mauer
+        this.createWallMesh();
         break;
-        
       case 3: // Baum
-        // Basisebene für den Baum
-        this.meshes.ground = new THREE.Mesh(baseGeometry, this.materialCache.getMaterial('ground'));
-        this.meshes.ground.receiveShadow = true;
-        
-        // Baumstamm - Verwendung von CylinderGeometry für einen natürlicheren Stamm
-        const trunkGeometry = new THREE.CylinderGeometry(0.08, 0.12, 1.0, 8);
-        this.meshes.trunk = new THREE.Mesh(trunkGeometry, this.materialCache.getMaterial('trunk'));
-        this.meshes.trunk.position.y = 0.5; // Halbe Höhe des Stamms
-        this.meshes.trunk.castShadow = true;
-        this.meshes.trunk.receiveShadow = true;
-        
-        // Kleine zufällige Rotation des Stamms für Natürlichkeit
-        this.meshes.trunk.rotation.x = (Math.random() - 0.5) * 0.1;
-        this.meshes.trunk.rotation.z = (Math.random() - 0.5) * 0.1;
-        
-        // Mehrere Ebenen von Blättern für eine realistischere Krone
-        const foliageGroup = new THREE.Group();
-        foliageGroup.position.y = 1.0;
-        
-        // Untere Ebene - breiter
-        const foliageBottom = new THREE.Mesh(
-          new THREE.ConeGeometry(0.5, 0.7, 8),
-          this.materialCache.getMaterial('foliage')
-        );
-        foliageBottom.position.y = 0.0;
-        foliageBottom.castShadow = true;
-        foliageBottom.receiveShadow = true;
-        
-        // Mittlere Ebene
-        const foliageMiddle = new THREE.Mesh(
-          new THREE.ConeGeometry(0.4, 0.7, 8),
-          this.materialCache.getMaterial('foliage')
-        );
-        foliageMiddle.position.y = 0.5;
-        foliageMiddle.castShadow = true;
-        foliageMiddle.receiveShadow = true;
-        
-        // Obere Ebene - schmaler
-        const foliageTop = new THREE.Mesh(
-          new THREE.ConeGeometry(0.3, 0.6, 8),
-          this.materialCache.getMaterial('foliage')
-        );
-        foliageTop.position.y = 1.0;
-        foliageTop.castShadow = true;
-        foliageTop.receiveShadow = true;
-        
-        // Zufällige Rotation jeder Ebene für mehr Variation
-        foliageBottom.rotation.y = Math.random() * Math.PI * 2;
-        foliageMiddle.rotation.y = Math.random() * Math.PI * 2;
-        foliageTop.rotation.y = Math.random() * Math.PI * 2;
-        
-        // Füge alle Foliage-Ebenen zur Gruppe hinzu
-        foliageGroup.add(foliageBottom);
-        foliageGroup.add(foliageMiddle);
-        foliageGroup.add(foliageTop);
-        
-        // Füge alles zum Container hinzu
-        this.container.add(this.meshes.ground);
-        this.container.add(this.meshes.trunk);
-        this.container.add(foliageGroup);
-        
-        // Speichere die Foliage-Gruppe für späteres Referenzieren
-        this.meshes.foliage = foliageGroup;
-        
-        // Zufällige Skalierung des Baums für natürliche Variation (80% - 120% der Größe)
-        const treeScale = 0.8 + Math.random() * 0.4;
-        this.meshes.trunk.scale.set(treeScale, treeScale, treeScale);
-        foliageGroup.scale.set(treeScale, treeScale, treeScale);
+        this.createTreeMesh();
         break;
-        
       case 4: // Pfad/Weg
-        this.meshes.path = new THREE.Mesh(baseGeometry, this.materialCache.getMaterial('path'));
-        this.meshes.path.receiveShadow = true;
-        this.container.add(this.meshes.path);
+        this.createRoadMesh();
         break;
-        
-      default: // Gras oder Fallback
-        this.meshes.grass = new THREE.Mesh(baseGeometry, this.materialCache.getMaterial('grass'));
-        this.meshes.grass.receiveShadow = true;
-        this.container.add(this.meshes.grass);
+      case 5: // Sand/Strand
+        this.createSandMesh();
+        break;
+      case 6: // Brücke
+        this.createBridgeMesh();
+        break;
+      case 7: // Gebäude
+        this.createBuildingMesh();
+        break;
+      default:
+        // Falls unbekannter Typ, erstelle ein einfaches Standard-Mesh
+        this.createDefaultMesh();
     }
+  }
+  
+  // Erstellt Wasser-Mesh mit Animation
+  createWaterMesh() {
+    // HIGH DETAIL
+    const waterGeometryHigh = new THREE.PlaneGeometry(1, 1, 4, 4);
+    const waterMaterialHigh = new THREE.MeshStandardMaterial({
+      color: 0x3366FF,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide
+    });
+    
+    const waterMeshHigh = new THREE.Mesh(waterGeometryHigh, waterMaterialHigh);
+    waterMeshHigh.rotation.x = -Math.PI / 2;
+    waterMeshHigh.position.y = -0.1; // Leicht unter Normalniveau für besseren visuellen Effekt
+    
+    this.detailLevels.high.water = waterMeshHigh;
+    
+    // MEDIUM DETAIL
+    const waterGeometryMedium = new THREE.PlaneGeometry(1, 1, 2, 2);
+    const waterMaterialMedium = new THREE.MeshStandardMaterial({
+      color: 0x3366FF,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide
+    });
+    
+    const waterMeshMedium = new THREE.Mesh(waterGeometryMedium, waterMaterialMedium);
+    waterMeshMedium.rotation.x = -Math.PI / 2;
+    waterMeshMedium.position.y = -0.1;
+    waterMeshMedium.visible = false;
+    
+    this.detailLevels.medium.water = waterMeshMedium;
+    
+    // LOW DETAIL
+    const waterGeometryLow = new THREE.PlaneGeometry(1, 1, 1, 1);
+    const waterMaterialLow = new THREE.MeshStandardMaterial({
+      color: 0x3366FF,
+      transparent: true,
+      opacity: 0.7,
+      side: THREE.DoubleSide
+    });
+    
+    const waterMeshLow = new THREE.Mesh(waterGeometryLow, waterMaterialLow);
+    waterMeshLow.rotation.x = -Math.PI / 2;
+    waterMeshLow.position.y = -0.1;
+    waterMeshLow.visible = false;
+    
+    this.detailLevels.low.water = waterMeshLow;
+  }
+  
+  // Erstellt Land/Stein-Mesh
+  createLandMesh() {
+    // HIGH DETAIL
+    const landGeometryHigh = new THREE.BoxGeometry(1, 0.2 + this.height, 1);
+    const landMaterialHigh = new THREE.MeshStandardMaterial({
+      color: 0x44AA44,
+      flatShading: true
+    });
+    
+    const landMeshHigh = new THREE.Mesh(landGeometryHigh, landMaterialHigh);
+    landMeshHigh.position.y = -0.1 + this.height / 2;
+    landMeshHigh.castShadow = true;
+    landMeshHigh.receiveShadow = true;
+    
+    this.detailLevels.high.grass = landMeshHigh;
+    
+    // MEDIUM DETAIL
+    const landGeometryMedium = new THREE.BoxGeometry(1, 0.2 + this.height, 1);
+    const landMaterialMedium = new THREE.MeshStandardMaterial({
+      color: 0x44AA44,
+      flatShading: false
+    });
+    
+    const landMeshMedium = new THREE.Mesh(landGeometryMedium, landMaterialMedium);
+    landMeshMedium.position.y = -0.1 + this.height / 2;
+    landMeshMedium.castShadow = false;
+    landMeshMedium.receiveShadow = true;
+    landMeshMedium.visible = false;
+    
+    this.detailLevels.medium.grass = landMeshMedium;
+    
+    // LOW DETAIL
+    const landGeometryLow = new THREE.BoxGeometry(1, 0.2 + this.height, 1);
+    const landMaterialLow = new THREE.MeshBasicMaterial({
+      color: 0x44AA44
+    });
+    
+    const landMeshLow = new THREE.Mesh(landGeometryLow, landMaterialLow);
+    landMeshLow.position.y = -0.1 + this.height / 2;
+    landMeshLow.castShadow = false;
+    landMeshLow.receiveShadow = false;
+    landMeshLow.visible = false;
+    
+    this.detailLevels.low.grass = landMeshLow;
+  }
+  
+  // Erstellt Wand/Mauer-Mesh
+  createWallMesh() {
+    // HIGH DETAIL - Basis
+    const baseGeometryHigh = new THREE.BoxGeometry(1, 0.2, 1);
+    const baseMaterialHigh = new THREE.MeshStandardMaterial({
+      color: 0x888888,
+      flatShading: true
+    });
+    
+    const baseMeshHigh = new THREE.Mesh(baseGeometryHigh, baseMaterialHigh);
+    baseMeshHigh.position.y = -0.1 + 0.1;
+    baseMeshHigh.castShadow = true;
+    baseMeshHigh.receiveShadow = true;
+    
+    this.detailLevels.high.base = baseMeshHigh;
+    
+    // HIGH DETAIL - Wand
+    const wallGeometryHigh = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+    const wallMaterialHigh = new THREE.MeshStandardMaterial({
+      color: 0x666666,
+      flatShading: true
+    });
+    
+    const wallMeshHigh = new THREE.Mesh(wallGeometryHigh, wallMaterialHigh);
+    wallMeshHigh.position.y = 0.2 + 0.4;
+    wallMeshHigh.castShadow = true;
+    wallMeshHigh.receiveShadow = true;
+    
+    this.detailLevels.high.wall = wallMeshHigh;
+    
+    // MEDIUM DETAIL
+    const combinedGeometryMedium = new THREE.BoxGeometry(0.9, 1.0, 0.9);
+    const combinedMaterialMedium = new THREE.MeshStandardMaterial({
+      color: 0x666666
+    });
+    
+    const combinedMeshMedium = new THREE.Mesh(combinedGeometryMedium, combinedMaterialMedium);
+    combinedMeshMedium.position.y = 0.4;
+    combinedMeshMedium.castShadow = true;
+    combinedMeshMedium.receiveShadow = true;
+    combinedMeshMedium.visible = false;
+    
+    this.detailLevels.medium.wall = combinedMeshMedium;
+    
+    // LOW DETAIL
+    const combinedGeometryLow = new THREE.BoxGeometry(0.9, 1.0, 0.9);
+    const combinedMaterialLow = new THREE.MeshBasicMaterial({
+      color: 0x666666
+    });
+    
+    const combinedMeshLow = new THREE.Mesh(combinedGeometryLow, combinedMaterialLow);
+    combinedMeshLow.position.y = 0.4;
+    combinedMeshLow.castShadow = false;
+    combinedMeshLow.receiveShadow = false;
+    combinedMeshLow.visible = false;
+    
+    this.detailLevels.low.wall = combinedMeshLow;
+  }
+  
+  // Erstellt ein Standard-Mesh für unbekannte Tile-Typen
+  createDefaultMesh() {
+    // HIGH DETAIL
+    const defaultGeometryHigh = new THREE.BoxGeometry(1, 0.2, 1);
+    const defaultMaterialHigh = new THREE.MeshStandardMaterial({
+      color: 0xCCCCCC, // Grau
+      flatShading: true
+    });
+    
+    const defaultMeshHigh = new THREE.Mesh(defaultGeometryHigh, defaultMaterialHigh);
+    defaultMeshHigh.position.y = -0.1 + 0.1;
+    defaultMeshHigh.castShadow = true;
+    defaultMeshHigh.receiveShadow = true;
+    
+    this.detailLevels.high.default = defaultMeshHigh;
+    
+    // MEDIUM DETAIL
+    const defaultGeometryMedium = new THREE.BoxGeometry(1, 0.2, 1);
+    const defaultMaterialMedium = new THREE.MeshStandardMaterial({
+      color: 0xCCCCCC,
+      flatShading: false
+    });
+    
+    const defaultMeshMedium = new THREE.Mesh(defaultGeometryMedium, defaultMaterialMedium);
+    defaultMeshMedium.position.y = -0.1 + 0.1;
+    defaultMeshMedium.castShadow = false;
+    defaultMeshMedium.receiveShadow = true;
+    defaultMeshMedium.visible = false;
+    
+    this.detailLevels.medium.default = defaultMeshMedium;
+    
+    // LOW DETAIL
+    const defaultGeometryLow = new THREE.BoxGeometry(1, 0.2, 1);
+    const defaultMaterialLow = new THREE.MeshBasicMaterial({
+      color: 0xCCCCCC
+    });
+    
+    const defaultMeshLow = new THREE.Mesh(defaultGeometryLow, defaultMaterialLow);
+    defaultMeshLow.position.y = -0.1 + 0.1;
+    defaultMeshLow.castShadow = false;
+    defaultMeshLow.receiveShadow = false;
+    defaultMeshLow.visible = false;
+    
+    this.detailLevels.low.default = defaultMeshLow;
+  }
+  
+  // Erstellt Pfad/Straßen-Mesh
+  createRoadMesh() {
+    // HIGH DETAIL
+    const roadGeometryHigh = new THREE.BoxGeometry(1, 0.15, 1);
+    const roadMaterialHigh = new THREE.MeshStandardMaterial({
+      color: 0xD2B48C, // Sandfarbe für Pfade
+      roughness: 0.8,
+      metalness: 0.1
+    });
+    
+    const roadMeshHigh = new THREE.Mesh(roadGeometryHigh, roadMaterialHigh);
+    roadMeshHigh.position.y = -0.1 + 0.075;
+    roadMeshHigh.castShadow = false;
+    roadMeshHigh.receiveShadow = true;
+    
+    this.detailLevels.high.road = roadMeshHigh;
+    
+    // MEDIUM DETAIL
+    const roadGeometryMedium = new THREE.BoxGeometry(1, 0.15, 1);
+    const roadMaterialMedium = new THREE.MeshStandardMaterial({
+      color: 0xD2B48C,
+      roughness: 0.8,
+      metalness: 0.1
+    });
+    
+    const roadMeshMedium = new THREE.Mesh(roadGeometryMedium, roadMaterialMedium);
+    roadMeshMedium.position.y = -0.1 + 0.075;
+    roadMeshMedium.castShadow = false;
+    roadMeshMedium.receiveShadow = true;
+    roadMeshMedium.visible = false;
+    
+    this.detailLevels.medium.road = roadMeshMedium;
+    
+    // LOW DETAIL
+    const roadGeometryLow = new THREE.BoxGeometry(1, 0.15, 1);
+    const roadMaterialLow = new THREE.MeshBasicMaterial({
+      color: 0xD2B48C
+    });
+    
+    const roadMeshLow = new THREE.Mesh(roadGeometryLow, roadMaterialLow);
+    roadMeshLow.position.y = -0.1 + 0.075;
+    roadMeshLow.castShadow = false;
+    roadMeshLow.receiveShadow = false;
+    roadMeshLow.visible = false;
+    
+    this.detailLevels.low.road = roadMeshLow;
+  }
+  
+  // Setzt die aktuelle Detailstufe
+  setDetailLevel(level) {
+    if (level === this.currentDetailLevel) return;
+    
+    // Aktuelle Meshes ausblenden
+    Object.values(this.detailLevels[this.currentDetailLevel]).forEach(mesh => {
+      if (mesh) mesh.visible = false;
+    });
+    
+    // Neue Meshes einblenden
+    Object.values(this.detailLevels[level]).forEach(mesh => {
+      if (mesh) mesh.visible = true;
+    });
+    
+    this.currentDetailLevel = level;
   }
   
   // Hilfsmethode, um UV-Koordinaten für korrekte Texturierung zu fixieren

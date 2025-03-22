@@ -773,74 +773,82 @@ export class Map {
   }
   
   createTiles() {
-    // Initialisiere MaterialCache als Instanz
-    if (!this.materialCache) {
-      this.materialCache = new MaterialCache(this.assetLoader);
-    }
-    
-    // Leere Tiles-Array für neues Füllen
-    this.tiles = [];
-    this.waterTiles = [];
-    this.chunks = {};
-    
-    // Temporäre Sammlungen für Geometrie-Batching nach Typ
-    const geometryBatches = {
-      land: [],       // Type 1: Land/Stein
-      water: [],      // Type 0: Wasser
-      grass: [],      // Default: Gras
-      walls: [],      // Type 2: Wände
-      wallBase: [],   // Basis für Wände
-      treeGround: [], // Boden unter Bäumen
-      treeTrunk: [],  // Baumstämme
-      treeFoliage: [] // Baumkronen
-    };
-    
-    // Create tiles based on map data
-    for (let y = 0; y < this.height; y++) {
-      this.tiles[y] = [];
+    try {
+      // Erstelle ein 2D-Array für die Tiles
+      this.tiles = Array(this.height).fill().map(() => Array(this.width).fill(null));
+      this.waterTiles = []; // Reset der Wassertiles
       
-      for (let x = 0; x < this.width; x++) {
-        const tileType = this.mapData[y][x];
-        
-        // Erstelle ein Tile mit korrektem Typ
-        const tile = new Tile(this.assetLoader, tileType);
-        
-        // Positioniere das Tile in der Welt
-        tile.container.position.set(
-          x * this.tileSize,
-          0,
-          y * this.tileSize
-        );
-        
-        // Füge das Tile zum Container hinzu
-        this.container.add(tile.container);
-        
-        // Speichere das Tile im Array
-        this.tiles[y][x] = tile;
-        
-        // Tracke Wassertiles für Animation
-        if (tileType === 0) {
-          this.waterTiles.push({ tile, x, y });
+      // Sammle Geometrien für verschiedene Tile-Typen
+      const geometryBatches = {
+        water: [],    // Wasser (transparent, muss separat gerendert werden)
+        land: [],     // Gras/Land
+        road: [],     // Straßen
+        building: [], // Gebäude
+        sand: [],     // Sand/Strand
+        bridge: [],   // Brücken
+        wall: [],     // Wände/Barrieren
+        special: [],  // Spezielle Objekte (Bäume, Lampen, etc.)
+        other: []     // Sonstige Objekte
+      };
+      
+      // Erstelle für jede Position in der Map ein Tile
+      for (let y = 0; y < this.height; y++) {
+        for (let x = 0; x < this.width; x++) {
+          // Hole den Tile-Typ aus den Map-Daten
+          const tileType = this.mapData[y][x] || 0;
+          
+          // Berechne Höhe für dieses Tile (kann später für Hügel verwendet werden)
+          const height = 0;
+          
+          // Bestimme spezielle Features (z.B. Bäume, Lampen)
+          const special = null; // Vereinfachung: Keine speziellen Features
+          
+          // Erstelle ein neues Tile
+          const tile = new Tile(this.game, this.assetLoader, x, y, tileType, height, special);
+          
+          // Setze die Weltposition des Tiles
+          const worldPosition = new THREE.Vector3(
+            x * this.tileSize,
+            0,
+            y * this.tileSize
+          );
+          
+          // Füge das Tile zum Container hinzu
+          this.container.add(tile.container);
+          
+          // Speichere das Tile im Array
+          this.tiles[y][x] = tile;
+          
+          // Tracke Wassertiles für Animation
+          if (tileType === 0) {
+            this.waterTiles.push({ tile, x, y });
+          }
+          
+          // Füge das Tile zum entsprechenden Chunk hinzu
+          this.addTileToChunk(tile, x, y);
         }
-        
-        // Sammle Geometrien nach Typ für Batching
-        this.collectGeometriesForBatching(tile, geometryBatches, x, y);
-        
-        // Füge das Tile zum entsprechenden Chunk hinzu
-        this.addTileToChunk(tile, x, y);
       }
+      
+      // Füge Nahtflächen zwischen Tiles hinzu, um schwarze Lücken zu vermeiden
+      this.addTileSeams();
+      
+      // Sammle Geometrien nach Typ für Batching
+      this.collectGeometriesForBatching(geometryBatches);
+      
+      // Führe Geometrien zusammen und erstelle optimierte Meshes
+      this.createMergedGeometries(geometryBatches);
+      
+      // Erstelle Bounding-Boxen für Chunks
+      this.createChunkBoundingBoxes();
+      
+      console.log("Tiles created successfully:", {
+        width: this.width,
+        height: this.height,
+        totalTiles: this.width * this.height
+      });
+    } catch (error) {
+      console.error("Error in tile creation:", error);
     }
-    
-    // Füge Nahtflächen zwischen Tiles hinzu, um schwarze Lücken zu vermeiden
-    this.addTileSeams();
-    
-    // Führe Geometrien zusammen und erstelle optimierte Meshes
-    this.createMergedGeometries(geometryBatches);
-    
-    // Erstelle Bounding-Boxen für Chunks
-    this.finalizeChunks();
-    
-    // console.log(`Created ${this.waterTiles.length} water tiles`);
   }
   
   // Fügt ein Tile zu einem Chunk hinzu, basierend auf seiner Position
@@ -866,279 +874,482 @@ export class Map {
     this.chunks[chunkID].tiles.push(tile);
   }
   
-  // Sammelt Geometrien eines Tiles für späteres Batching
-  collectGeometriesForBatching(tile, batches, x, y) {
-    const worldPosition = new THREE.Vector3(
-      x * this.tileSize,
-      0,
-      y * this.tileSize
-    );
-    
-    switch (tile.tileType) {
-      case 0: // Wasser
-        // Erstelle einen Eintrag mit Position und ursprünglichem Mesh
-        if (tile.meshes.water) {
-          batches.water.push({
-            position: worldPosition,
-            originalMesh: tile.meshes.water
-          });
-        }
-        break;
-        
-      case 1: // Land/Stein
-        if (tile.meshes.land) {
-          batches.land.push({
-            position: worldPosition,
-            originalMesh: tile.meshes.land
-          });
-        }
-        break;
-        
-      case 2: // Wand
-        // Wand-Box
-        if (tile.meshes.wall) {
-          batches.walls.push({
-            position: new THREE.Vector3(worldPosition.x, 0.5, worldPosition.z),
-            originalMesh: tile.meshes.wall
-          });
-        }
-        
-        // Wand-Basis
-        if (tile.meshes.base) {
-          batches.wallBase.push({
-            position: new THREE.Vector3(worldPosition.x, -0.01, worldPosition.z),
-            originalMesh: tile.meshes.base
-          });
-        }
-        break;
-        
-      case 3: // Baum
-        // Boden unter dem Baum
-        if (tile.meshes.ground) {
-          batches.treeGround.push({
-            position: worldPosition,
-            originalMesh: tile.meshes.ground
-          });
-        }
-        
-        // Baumstamm
-        if (tile.meshes.trunk) {
-          batches.treeTrunk.push({
-            position: worldPosition,
-            originalMesh: tile.meshes.trunk
-          });
-        }
-        
-        // Baumkrone - Hole die Meshes aus der Gruppe
-        if (tile.meshes.foliage) {
-          // Prüfe, ob foliage eine Gruppe oder ein Mesh ist
-          if (tile.meshes.foliage.isGroup) {
-            // Es ist eine Gruppe, sammle alle Kinder (die Meshes sind)
-            tile.meshes.foliage.children.forEach(mesh => {
-              if (mesh.isMesh) {
-                batches.treeFoliage.push({
-                  // Berücksichtige die Position der Gruppe und des Mesh innerhalb der Gruppe
-                  position: new THREE.Vector3().copy(worldPosition).add(
-                    new THREE.Vector3(0, tile.meshes.foliage.position.y, 0)
-                  ),
-                  originalMesh: mesh
+  // Methode zum Sammeln von Geometrien für Batching aktualisieren
+  // alt: collectGeometriesForBatching
+  collectGeometriesForBatching(batches) {
+    try {
+      console.log("Collecting geometries for batching...");
+      
+      // Iteriere über alle Tiles
+      for (let y = 0; y < this.height; y++) {
+        for (let x = 0; x < this.width; x++) {
+          const tile = this.tiles[y][x];
+          if (!tile) continue;
+          
+          const worldPosition = new THREE.Vector3(
+            x * this.tileSize,
+            0,
+            y * this.tileSize
+          );
+          
+          // Verwende den Tile-Typ für die Kategorisierung
+          switch (tile.tileType) {
+            case 0: // Wasser - separat behandeln für Animation
+              if (tile.detailLevels && tile.detailLevels.high && tile.detailLevels.high.water) {
+                batches.water.push({
+                  position: worldPosition.clone(),
+                  mesh: tile.detailLevels.high.water
                 });
               }
-            });
-          } else {
-            // Alter Code für Kompatibilität mit älteren Versionen
-            batches.treeFoliage.push({
-              position: worldPosition,
-              originalMesh: tile.meshes.foliage
-            });
+              break;
+              
+            case 1: // Land/Gras
+              if (tile.detailLevels && tile.detailLevels.high && tile.detailLevels.high.grass) {
+                batches.land.push({
+                  position: worldPosition.clone(),
+                  mesh: tile.detailLevels.high.grass
+                });
+              }
+              break;
+              
+            case 2: // Wände/Barrieren
+              if (tile.detailLevels && tile.detailLevels.high && tile.detailLevels.high.wall) {
+                batches.wall.push({
+                  position: worldPosition.clone(),
+                  mesh: tile.detailLevels.high.wall
+                });
+              }
+              // Basis für Wände (falls vorhanden)
+              if (tile.detailLevels && tile.detailLevels.high && tile.detailLevels.high.base) {
+                batches.wall.push({
+                  position: worldPosition.clone(),
+                  mesh: tile.detailLevels.high.base
+                });
+              }
+              break;
+              
+            case 3: // Bäume und Vegetation
+              // Boden unter dem Baum
+              if (tile.detailLevels && tile.detailLevels.high && tile.detailLevels.high.ground) {
+                batches.land.push({
+                  position: worldPosition.clone(),
+                  mesh: tile.detailLevels.high.ground
+                });
+              }
+              
+              // Baumstamm und Krone als spezielle Objekte behandeln
+              if (tile.detailLevels && tile.detailLevels.high) {
+                // Baumstamm
+                if (tile.detailLevels.high.trunk) {
+                  batches.special.push({
+                    position: worldPosition.clone(),
+                    mesh: tile.detailLevels.high.trunk,
+                    type: 'tree_trunk'
+                  });
+                }
+                
+                // Baumkrone 
+                if (tile.detailLevels.high.foliage) {
+                  if (tile.detailLevels.high.foliage.isGroup) {
+                    // Es ist eine Gruppe, sammle alle Kinder (die Meshes sind)
+                    tile.detailLevels.high.foliage.children.forEach(childMesh => {
+                      if (childMesh.isMesh) {
+                        // Position berechnen: Welt + Gruppe + Kind
+                        const childPosition = worldPosition.clone();
+                        childPosition.y += tile.detailLevels.high.foliage.position.y + (childMesh.position.y || 0);
+                        
+                        batches.special.push({
+                          position: childPosition,
+                          mesh: childMesh,
+                          type: 'tree_foliage'
+                        });
+                      }
+                    });
+                  } else if (tile.detailLevels.high.foliage.isMesh) {
+                    batches.special.push({
+                      position: worldPosition.clone(),
+                      mesh: tile.detailLevels.high.foliage,
+                      type: 'tree_foliage'
+                    });
+                  }
+                }
+              }
+              break;
+              
+            case 4: // Pfad/Straße
+              if (tile.detailLevels && tile.detailLevels.high && tile.detailLevels.high.road) {
+                batches.road.push({
+                  position: worldPosition.clone(),
+                  mesh: tile.detailLevels.high.road
+                });
+              }
+              break;
+              
+            case 5: // Sand/Strand
+              if (tile.detailLevels && tile.detailLevels.high && tile.detailLevels.high.sand) {
+                batches.sand.push({
+                  position: worldPosition.clone(),
+                  mesh: tile.detailLevels.high.sand
+                });
+              }
+              break;
+              
+            case 6: // Brücke
+              if (tile.detailLevels && tile.detailLevels.high && tile.detailLevels.high.bridge) {
+                batches.bridge.push({
+                  position: worldPosition.clone(),
+                  mesh: tile.detailLevels.high.bridge
+                });
+              }
+              break;
+              
+            case 7: // Gebäude
+              if (tile.detailLevels && tile.detailLevels.high && tile.detailLevels.high.building) {
+                batches.building.push({
+                  position: worldPosition.clone(),
+                  mesh: tile.detailLevels.high.building
+                });
+              }
+              break;
+              
+            default:
+              // Sonstige Objekte
+              if (tile.detailLevels && tile.detailLevels.high) {
+                // Alle anderen Meshes im high-Detail-Level
+                Object.entries(tile.detailLevels.high).forEach(([key, mesh]) => {
+                  if (mesh && mesh.isMesh && !['water', 'grass', 'wall', 'base', 'ground', 'trunk', 'foliage', 'road', 'sand', 'bridge', 'building'].includes(key)) {
+                    batches.other.push({
+                      position: worldPosition.clone(),
+                      mesh: mesh,
+                      type: key
+                    });
+                  }
+                });
+              }
+              break;
+          }
+          
+          // Spezielle Features wie Lampen, Schilder, etc. (unabhängig vom Tile-Typ)
+          if (tile.detailLevels && tile.detailLevels.high) {
+            // Lampen
+            if (tile.detailLevels.high.lamp) {
+              batches.special.push({
+                position: worldPosition.clone(),
+                mesh: tile.detailLevels.high.lamp,
+                type: 'lamp'
+              });
+            }
+            
+            // Schilder
+            if (tile.detailLevels.high.sign) {
+              batches.special.push({
+                position: worldPosition.clone(),
+                mesh: tile.detailLevels.high.sign,
+                type: 'sign'
+              });
+            }
           }
         }
-        break;
-        
-      default: // Gras oder Fallback
-        if (tile.meshes.grass) {
-          batches.grass.push({
-            position: worldPosition,
-            originalMesh: tile.meshes.grass
-          });
-        }
+      }
+      
+      console.log("Geometry collection complete", {
+        waterCount: batches.water.length,
+        landCount: batches.land.length,
+        roadCount: batches.road.length,
+        buildingCount: batches.building.length,
+        wallCount: batches.wall.length,
+        sandCount: batches.sand.length,
+        bridgeCount: batches.bridge.length,
+        specialCount: batches.special.length,
+        otherCount: batches.other.length
+      });
+    } catch (error) {
+      console.error("Error collecting geometries:", error);
     }
   }
   
-  // Erstellt zusammengeführte Geometrien für bessere Performance
+  // Erstelle die zusammengeführten Geometrien pro Typ
   createMergedGeometries(batches) {
-    // Erstelle Container für zusammengeführte Meshes
-    this.mergedMeshes = new THREE.Group();
-    this.container.add(this.mergedMeshes);
-    
-    // Sammle alle Materials für die verschiedenen Tile-Typen
-    const landMaterial = this.tiles[0][0].materialCache.getMaterial('land');
-    const wallMaterial = this.tiles[0][0].materialCache.getMaterial('wall');
-    const wallBaseMaterial = this.tiles[0][0].materialCache.getMaterial('wallBase');
-    const groundMaterial = this.tiles[0][0].materialCache.getMaterial('ground');
-    const trunkMaterial = this.tiles[0][0].materialCache.getMaterial('trunk');
-    const foliageMaterial = this.tiles[0][0].materialCache.getMaterial('foliage');
-    const pathMaterial = this.tiles[0][0].materialCache.getMaterial('path');
-    
-    // Teile die Batches in Chunks auf, um große Geometrien zu vermeiden
-    const chunkSize = 50; // Maximale Anzahl von Tiles pro Chunk
-    
-    // Land/Stein in Batches verarbeiten
-    this.processBatchesInChunks(batches.land, landMaterial, 'land', chunkSize);
-    
-    // Wände in Batches verarbeiten
-    this.processBatchesInChunks(batches.wall, wallMaterial, 'wall', chunkSize);
-    
-    // Wandbasen in Batches verarbeiten
-    this.processBatchesInChunks(batches.wallBase, wallBaseMaterial, 'wallBase', chunkSize);
-    
-    // Boden unter Bäumen in Batches verarbeiten
-    this.processBatchesInChunks(batches.ground, groundMaterial, 'ground', chunkSize);
-    
-    // Baumstämme in Batches verarbeiten
-    this.processBatchesInChunks(batches.treeTrunk, trunkMaterial, 'treeTrunk', chunkSize);
-    
-    // Baumkronen in Batches verarbeiten
-    this.processBatchesInChunks(batches.treeFoliage, foliageMaterial, 'treeFoliage', chunkSize);
-    
-    // Pfade in Batches verarbeiten
-    this.processBatchesInChunks(batches.path, pathMaterial, 'path', chunkSize);
-  }
-  
-  // Hilfsmethode zum Verarbeiten von Batches in Chunks
-  processBatchesInChunks(batch, material, name, chunkSize) {
-    if (!batch || batch.length === 0) return;
-    
-    // Teile die Geometrien in Chunks auf
-    for (let i = 0; i < batch.length; i += chunkSize) {
-      const chunkBatch = batch.slice(i, i + chunkSize);
-      this.mergeBatch(`${name}_${i/chunkSize}`, chunkBatch, material);
-    }
-  }
-  
-  // Hilfsfunktion zum Zusammenführen einer Gruppe von Geometrien
-  mergeBatch(name, batch, material) {
-    if (batch.length === 0) return;
-    
-    // Erstelle eine zusammengeführte Geometrie
-    const mergedGeometry = new THREE.BufferGeometry();
-    
-    // Sammle Attribute aus allen Geometrien
-    const positions = [];
-    const normals = [];
-    const uvs = [];
-    
-    // Für jede Geometrie in diesem Batch
-    batch.forEach(item => {
-      // Hole die Position des Objekts
-      const position = item.position;
+    try {
+      console.log("Creating merged geometries...");
       
-      // Prüfen, ob alle erforderlichen Eigenschaften vorhanden sind
-      if (!item.originalMesh || !item.originalMesh.geometry) {
-        console.warn("Fehlerhaftes Mesh-Element übersprungen:", item);
-        return; // Überspringe diesen Eintrag
-      }
+      // Container für zusammengeführte Geometrien
+      this.mergedGeometries = new THREE.Group();
+      this.container.add(this.mergedGeometries);
       
-      // Hole die Geometrie
-      const mesh = item.originalMesh;
-      const geometry = mesh.geometry;
+      // Standard-Materialien für verschiedene Batch-Typen
+      const materials = {
+        water: new THREE.MeshStandardMaterial({ color: 0x3333FF, transparent: true, opacity: 0.8 }),
+        land: new THREE.MeshStandardMaterial({ color: 0x33AA33 }),
+        road: new THREE.MeshStandardMaterial({ color: 0x666666 }),
+        building: new THREE.MeshStandardMaterial({ color: 0x995533 }),
+        sand: new THREE.MeshStandardMaterial({ color: 0xEEDD77 }),
+        bridge: new THREE.MeshStandardMaterial({ color: 0xBBAA99 }),
+        wall: new THREE.MeshStandardMaterial({ color: 0x777777 }),
+        other: new THREE.MeshStandardMaterial({ color: 0xAAAAAA })
+      };
       
-      // Hole die Attribute der Geometrie - mit Fehlerbehandlung
-      const positionAttribute = geometry.getAttribute('position');
-      if (!positionAttribute) {
-        console.warn(`Mesh ohne 'position'-Attribut übersprungen:`, mesh);
-        return; // Überspringe diesen Eintrag
-      }
+      // Instanzierte Meshes für spezielle Objekte erstellen
+      this.createInstancedMeshes(batches.special);
       
-      // Hole die Normal-Attribute mit Fallback
-      const normalAttribute = geometry.getAttribute('normal');
-      if (!normalAttribute) {
-        // Berechne Normalen, falls nicht vorhanden
-        geometry.computeVertexNormals();
-        // Prüfe erneut nach Berechnung
-        if (!geometry.getAttribute('normal')) {
-          console.warn(`Konnte Normalen nicht berechnen für:`, mesh);
-          return;
-        }
-      }
-      
-      // UV-Attribut - optional mit Fallback
-      const uvAttribute = geometry.getAttribute('uv');
-      
-      // Matrix für die Transformation
-      const matrix = new THREE.Matrix4();
-      
-      // Position für das Objekt anwenden
-      matrix.setPosition(position);
-      
-      // Berücksichtige die Y-Position des Mesh (für Wände, Baumstämme, etc.)
-      if (mesh.position.y !== 0) {
-        const posOffset = new THREE.Vector3(0, mesh.position.y, 0);
-        matrix.setPosition(position.clone().add(posOffset));
-      }
-      
-      // Normalenmatrix für korrekte Transformation der Normalen
-      const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
-      
-      // Füge alle Vertices der Geometrie hinzu
-      for (let i = 0; i < positionAttribute.count; i++) {
-        const vertex = new THREE.Vector3();
-        vertex.fromBufferAttribute(positionAttribute, i);
+      // Für jeden Batch-Typ eine zusammengeführte Geometrie erstellen
+      for (const [type, collection] of Object.entries(batches)) {
+        // Spezielle Objekte überspringen, da sie mit Instancing behandelt werden
+        if (type === 'special') continue;
         
-        // Transformiere den Vertex zur Weltposition dieses Objekts
-        vertex.applyMatrix4(matrix);
-        
-        positions.push(vertex.x, vertex.y, vertex.z);
-        
-        // Normale aus dem Attribut holen
-        const normal = new THREE.Vector3();
-        if (normalAttribute) {
-          normal.fromBufferAttribute(normalAttribute, i);
+        if (collection.length > 0) {
+          // Überprüfen, ob wir ein gültiges erstes Element haben
+          if (!collection[0] || !collection[0].mesh) {
+            console.warn(`Skipping invalid collection for ${type}`);
+            continue;
+          }
           
-          // Normale mit Normalenmatrix transformieren
-          normal.applyMatrix3(normalMatrix);
-          normal.normalize(); // Normalisieren nach der Transformation
-        } else {
-          // Fallback: nach oben zeigend
-          normal.set(0, 1, 0);
-        }
-        
-        normals.push(normal.x, normal.y, normal.z);
-        
-        // UVs kopieren, falls vorhanden
-        if (uvAttribute) {
-          uvs.push(
-            uvAttribute.getX(i),
-            uvAttribute.getY(i)
-          );
-        } else {
-          // Fallback UVs erzeugen
-          uvs.push(0, 0);
+          // Verwenden des ersten Mesh als Referenz
+          const refMesh = collection[0].mesh;
+          if (!refMesh.geometry) {
+            console.warn(`Missing geometry for type ${type}`);
+            continue;
+          }
+          
+          // Zusammengeführte Geometrie erstellen
+          const mergedGeometry = new THREE.BufferGeometry();
+          
+          // Attribute für die zusammengeführte Geometrie
+          const positions = [];
+          const normals = [];
+          const uvs = [];
+          const indices = [];
+          
+          // Startindex für Indices
+          let indexOffset = 0;
+          
+          // Alle Meshes in diesem Batch durchgehen
+          collection.forEach(item => {
+            if (!item || !item.mesh || !item.mesh.geometry) {
+              console.warn(`Skipping invalid mesh in collection for ${type}`);
+              return;
+            }
+            
+            const mesh = item.mesh;
+            const position = item.position;
+            
+            // Geometrie-Attribute holen
+            const posAttribute = mesh.geometry.getAttribute('position');
+            if (!posAttribute) {
+              console.warn(`Skipping mesh with missing position attribute for ${type}`);
+              return;
+            }
+            
+            const normalAttribute = mesh.geometry.getAttribute('normal');
+            const uvAttribute = mesh.geometry.getAttribute('uv');
+            
+            // Matrix für Positionstransformation
+            const matrix = new THREE.Matrix4().setPosition(position);
+            const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
+            
+            // Temporäre Vektoren
+            const tempVertex = new THREE.Vector3();
+            const tempNormal = new THREE.Vector3();
+            
+            // Vertex-Daten hinzufügen
+            for (let i = 0; i < posAttribute.count; i++) {
+              // Position
+              tempVertex.fromBufferAttribute(posAttribute, i);
+              tempVertex.applyMatrix4(matrix);
+              positions.push(tempVertex.x, tempVertex.y, tempVertex.z);
+              
+              // Normale
+              if (normalAttribute) {
+                tempNormal.fromBufferAttribute(normalAttribute, i);
+                tempNormal.applyMatrix3(normalMatrix);
+                tempNormal.normalize();
+                normals.push(tempNormal.x, tempNormal.y, tempNormal.z);
+              } else {
+                normals.push(0, 1, 0); // Default-Normale
+              }
+              
+              // UVs
+              if (uvAttribute) {
+                uvs.push(uvAttribute.getX(i), uvAttribute.getY(i));
+              } else {
+                uvs.push(0, 0); // Default-UVs
+              }
+            }
+            
+            // Indices
+            const indexAttribute = mesh.geometry.getIndex();
+            if (indexAttribute) {
+              for (let i = 0; i < indexAttribute.count; i++) {
+                indices.push(indexAttribute.getX(i) + indexOffset);
+              }
+            } else {
+              // Wenn keine Indices, generiere Dreiecke
+              for (let i = 0; i < posAttribute.count; i += 3) {
+                indices.push(i + indexOffset, i + 1 + indexOffset, i + 2 + indexOffset);
+              }
+            }
+            
+            // Offset für nächstes Mesh erhöhen
+            indexOffset += posAttribute.count;
+            
+            // Original-Mesh ausblenden
+            mesh.visible = false;
+          });
+          
+          // Attribute setzen
+          if (positions.length > 0) {
+            mergedGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            mergedGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+            mergedGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            
+            if (indices.length > 0) {
+              mergedGeometry.setIndex(indices);
+            }
+            
+            // Material aus der Referenz oder aus den Standard-Materialien verwenden
+            const material = refMesh.material || materials[type];
+            
+            // Merged Mesh erstellen
+            const mergedMesh = new THREE.Mesh(mergedGeometry, material);
+            mergedMesh.name = `merged_${type}`;
+            
+            // Schatten-Eigenschaften setzen
+            mergedMesh.castShadow = refMesh.castShadow || false;
+            mergedMesh.receiveShadow = refMesh.receiveShadow || false;
+            
+            // Zum Container hinzufügen
+            this.mergedGeometries.add(mergedMesh);
+            
+            console.log(`Created merged geometry for ${type} with ${positions.length / 3} vertices`);
+          }
         }
       }
-    });
-    
-    // Überprüfe, ob überhaupt Daten gesammelt wurden
-    if (positions.length === 0) {
-      console.warn(`Keine gültigen Geometrien gefunden für: ${name}`);
-      return;
+    } catch (error) {
+      console.error("Error creating merged geometries:", error);
     }
-    
-    // Setze die Buffer-Attribute der zusammengeführten Geometrie
-    mergedGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    mergedGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-    mergedGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-    
-    // Erstelle ein einziges Mesh für alle zusammengeführten Geometrien
-    const mergedMesh = new THREE.Mesh(mergedGeometry, material);
-    mergedMesh.name = name;
-    
-    // Schatten-Einstellungen
-    mergedMesh.castShadow = true;
-    mergedMesh.receiveShadow = true;
-    
-    // Füge das zusammengeführte Mesh zum Container hinzu
-    this.mergedMeshes.add(mergedMesh);
+  }
+  
+  // Erstellt instanzierte Meshes für komplexe Objekte (Bäume, Lampen, etc.)
+  createInstancedMeshes(specialCollection) {
+    try {
+      if (!specialCollection || specialCollection.length === 0) return;
+      
+      // Nach Typ gruppieren
+      const typeGroups = {};
+      
+      // Sammle alle Objekte nach Typ
+      specialCollection.forEach(item => {
+        if (!item || !item.mesh || !item.mesh.geometry) return;
+        
+        const type = item.type || 'unknown';
+        if (!typeGroups[type]) {
+          typeGroups[type] = {
+            geometries: new Set(),
+            items: []
+          };
+        }
+        
+        // Geometrie hinzufügen und das Item speichern
+        typeGroups[type].geometries.add(item.mesh.geometry);
+        typeGroups[type].items.push(item);
+      });
+      
+      // Für jeden Typ ein instanziertes Mesh erstellen
+      for (const [type, group] of Object.entries(typeGroups)) {
+        // Wenn mehrere verschiedene Geometrien, separat behandeln
+        if (group.geometries.size > 1) {
+          console.log(`Multiple geometry types (${group.geometries.size}) found for ${type}, creating separate merged meshes`);
+          
+          // Gruppieren nach Geometrie
+          const geometryGroups = {};
+          group.items.forEach(item => {
+            const geometryId = item.mesh.geometry.uuid;
+            if (!geometryGroups[geometryId]) {
+              geometryGroups[geometryId] = {
+                geometry: item.mesh.geometry,
+                material: item.mesh.material,
+                positions: []
+              };
+            }
+            geometryGroups[geometryId].positions.push(item.position);
+          });
+          
+          // Für jede Geometrie ein instanziertes Mesh erstellen
+          for (const [geometryId, geoGroup] of Object.entries(geometryGroups)) {
+            if (geoGroup.positions.length === 0) continue;
+            
+            const instancedMesh = new THREE.InstancedMesh(
+              geoGroup.geometry,
+              geoGroup.material,
+              geoGroup.positions.length
+            );
+            
+            instancedMesh.name = `instanced_${type}_${geometryId.slice(0, 5)}`;
+            
+            // Matrix für jede Instanz
+            const matrix = new THREE.Matrix4();
+            
+            // Setze Positionen für Instanzen
+            geoGroup.positions.forEach((position, i) => {
+              matrix.setPosition(position);
+              instancedMesh.setMatrixAt(i, matrix);
+            });
+            
+            // Aktualisiere die Matrizen
+            instancedMesh.instanceMatrix.needsUpdate = true;
+            
+            // Schatten-Eigenschaften setzen
+            instancedMesh.castShadow = true;
+            instancedMesh.receiveShadow = false;
+            
+            // Zum Container hinzufügen
+            this.mergedGeometries.add(instancedMesh);
+            
+            console.log(`Created instanced mesh for ${type} (${geometryId.slice(0, 5)}) with ${geoGroup.positions.length} instances`);
+          }
+        } else if (group.geometries.size === 1) {
+          // Eine gemeinsame Geometrie für alle Objekte dieses Typs
+          const geometry = group.geometries.values().next().value;
+          const refMesh = group.items[0].mesh;
+          
+          const instancedMesh = new THREE.InstancedMesh(
+            geometry,
+            refMesh.material,
+            group.items.length
+          );
+          
+          instancedMesh.name = `instanced_${type}`;
+          
+          // Matrix für jede Instanz
+          const matrix = new THREE.Matrix4();
+          
+          // Setze Positionen für Instanzen
+          group.items.forEach((item, i) => {
+            matrix.setPosition(item.position);
+            instancedMesh.setMatrixAt(i, matrix);
+          });
+          
+          // Aktualisiere die Matrizen
+          instancedMesh.instanceMatrix.needsUpdate = true;
+          
+          // Schatten-Eigenschaften setzen
+          instancedMesh.castShadow = refMesh.castShadow || true;
+          instancedMesh.receiveShadow = refMesh.receiveShadow || false;
+          
+          // Zum Container hinzufügen
+          this.mergedGeometries.add(instancedMesh);
+          
+          console.log(`Created instanced mesh for ${type} with ${group.items.length} instances`);
+        }
+        
+        // Original-Meshes ausblenden
+        group.items.forEach(item => {
+          if (item.mesh) item.mesh.visible = false;
+        });
+      }
+    } catch (error) {
+      console.error("Error creating instanced meshes:", error);
+    }
   }
   
   // Aktualisiere die Chunks für Frustum-Culling
@@ -1167,8 +1378,8 @@ export class Map {
     this.waterAnimationTime += deltaTime;
     
     // Wähle das zusammengeführte Wasser-Mesh
-    for (let i = 0; i < this.mergedMeshes.children.length; i++) {
-      const mesh = this.mergedMeshes.children[i];
+    for (let i = 0; i < this.mergedGeometries.children.length; i++) {
+      const mesh = this.mergedGeometries.children[i];
       if (mesh.name.startsWith('water_')) {
         // Aktualisiere UV-Koordinaten für Wasser-Animation
         const uvAttribute = mesh.geometry.getAttribute('uv');
@@ -1194,7 +1405,7 @@ export class Map {
     // Alte Wasser-Animation für individuelle Tiles (falls noch aktiv)
     if (this.waterTiles && this.waterTiles.length > 0) {
       for (const waterTile of this.waterTiles) {
-        if (waterTile.tile && waterTile.tile.meshes.water && waterTile.tile.meshes.water.material.map) {
+        if (waterTile.tile && waterTile.tile.meshes && waterTile.tile.meshes.water && waterTile.tile.meshes.water.material.map) {
           const texture = waterTile.tile.meshes.water.material.map;
           // Animiere Wassertextur durch Verschieben der UV-Koordinaten
           texture.offset.y = Math.sin(this.waterAnimationTime + waterTile.x * 0.2 + waterTile.y * 0.3) * 0.01;
@@ -1575,287 +1786,34 @@ export class Map {
     this.navigationGrid = safetyGrid;
   }
   
-  // Zusammenführen von Geometrien des gleichen Typs für bessere Performance
+  // Merged Geometrien für bessere Performance
   mergeGeometriesByType() {
-    // console.log("Merging geometries by type...");
-    
-    // Sammlungen für verschiedene Geometrietypen
-    const geometryCollections = {
-      land: [],       // Type 1: Land/Stein
-      wall: [],       // Type 2: Wände
-      wallBase: [],   // Basis für Wände
-      ground: [],     // Boden unter Bäumen
-      treeTrunk: [],  // Baumstämme
-      treeFoliage: [], // Baumkronen
-      path: []        // Type 4: Pfade/Wege
-    };
-    
-    // Sammle alle Geometrien nach Typ
-    for (let y = 0; y < this.height; y++) {
-      for (let x = 0; x < this.width; x++) {
-        const tile = this.tiles[y][x];
-        if (!tile) continue;
-        
-        const worldPosition = new THREE.Vector3(
-          x * this.tileSize,
-          0,
-          y * this.tileSize
-        );
-        
-        // Wasser-Tiles überspringen, sie sollen individuell bleiben für Animation
-        if (tile.tileType === 0) continue;
-        
-        switch (tile.tileType) {
-          case 1: // Land/Stein
-            if (tile.meshes.land) {
-              geometryCollections.land.push({
-                position: worldPosition.clone(),
-                mesh: tile.meshes.land
-              });
-            }
-            break;
-            
-          case 2: // Wand
-            if (tile.meshes.wall) {
-              geometryCollections.wall.push({
-                position: worldPosition.clone(),
-                mesh: tile.meshes.wall
-              });
-            }
-            if (tile.meshes.base) {
-              geometryCollections.wallBase.push({
-                position: worldPosition.clone(),
-                mesh: tile.meshes.base
-              });
-            }
-            break;
-            
-          case 3: // Baum
-            if (tile.meshes.ground) {
-              geometryCollections.ground.push({
-                position: worldPosition.clone(),
-                mesh: tile.meshes.ground
-              });
-            }
-            if (tile.meshes.trunk) {
-              geometryCollections.treeTrunk.push({
-                position: worldPosition.clone(),
-                mesh: tile.meshes.trunk
-              });
-            }
-            // Prüfe, ob foliage eine Gruppe oder ein Mesh ist
-            if (tile.meshes.foliage) {
-              if (tile.meshes.foliage.isGroup) {
-                // Es ist eine Gruppe, sammle alle Kinder (die Meshes sind)
-                tile.meshes.foliage.children.forEach(childMesh => {
-                  if (childMesh.isMesh) {
-                    // Position berechnen: Welt + Gruppe + Kind
-                    const childPosition = worldPosition.clone();
-                    childPosition.y += tile.meshes.foliage.position.y + (childMesh.position.y || 0);
-                    
-                    geometryCollections.treeFoliage.push({
-                      position: childPosition,
-                      mesh: childMesh
-                    });
-                  }
-                });
-              } else if (tile.meshes.foliage.isMesh) {
-                geometryCollections.treeFoliage.push({
-                  position: worldPosition.clone(),
-                  mesh: tile.meshes.foliage
-                });
-              }
-            }
-            break;
-            
-          case 4: // Pfad/Weg
-            if (tile.meshes.path) {
-              geometryCollections.path.push({
-                position: worldPosition.clone(),
-                mesh: tile.meshes.path
-              });
-            }
-            break;
-            
-          default:
-            // Überspringe unbekannte Typen
-            break;
-        }
-      }
+    try {
+      console.log("Merging geometries by type for better performance...");
+      
+      // Kategorien für verschiedene Tile-Typen
+      const batches = {
+        water: [],    // Wasser (transparent, muss separat gerendert werden)
+        land: [],     // Gras/Land
+        road: [],     // Straßen
+        building: [], // Gebäude
+        sand: [],     // Sand/Strand
+        bridge: [],   // Brücken
+        wall: [],     // Wände/Barrieren
+        special: [],  // Spezielle Objekte (Bäume, Lampen, etc.)
+        other: []     // Sonstige Objekte
+      };
+      
+      // Sammle Geometrien von allen Tiles
+      this.collectGeometriesForBatching(batches);
+      
+      // Erstelle zusammengeführte Geometrien nach Typ
+      this.createMergedGeometries(batches);
+      
+      console.log("Geometry merging complete");
+    } catch (error) {
+      console.error("Error merging geometries:", error);
     }
-    
-    // Container für zusammengeführte Geometrien
-    this.mergedGeometries = new THREE.Group();
-    this.container.add(this.mergedGeometries);
-    
-    // Führe die Geometrien für jeden Typ zusammen
-    for (const [type, collection] of Object.entries(geometryCollections)) {
-      if (collection.length > 0) {
-        this.createMergedGeometry(type, collection);
-      }
-    }
-    
-    // console.log("Geometry merging complete");
-  }
-  
-  // Erstellt eine zusammengeführte Geometrie für einen Typ
-  createMergedGeometry(type, collection) {
-    if (collection.length === 0) return;
-    
-    // Sicherheits-Checks: Prüfe, ob das erste Element und sein Mesh gültig sind
-    if (!collection[0] || !collection[0].mesh) {
-      console.warn(`Cannot create merged geometry for ${type}: Invalid mesh reference`);
-      return;
-    }
-    
-    // Referenz auf das erste Mesh für Material und Geometrie
-    const refMesh = collection[0].mesh;
-    
-    // Prüfe, ob Geometrie existiert
-    if (!refMesh.geometry) {
-      console.warn(`Cannot create merged geometry for ${type}: Missing geometry on reference mesh`);
-      return;
-    }
-    
-    const refGeometry = refMesh.geometry.clone(); // Clone, um Originalgeometrie nicht zu verändern
-    const material = refMesh.material;
-    
-    // Erstelle eine zusammengeführte Geometrie
-    const mergedGeometry = new THREE.BufferGeometry();
-    
-    // Attribute für die zusammengeführte Geometrie
-    const positions = [];
-    const normals = [];
-    const uvs = [];
-    const indices = [];
-    
-    // Startindex für Indices
-    let indexOffset = 0;
-    
-    // Gehe durch jedes Mesh in der Sammlung
-    collection.forEach(item => {
-      if (!item || !item.mesh || !item.mesh.geometry) {
-        console.warn(`Skipping invalid mesh in collection for ${type}`);
-        return; // Überspringe ungültige Einträge
-      }
-      
-      // Mesh und seine Position
-      const mesh = item.mesh;
-      const position = item.position;
-      
-      // Hole Geometrie-Attribute
-      const posAttribute = mesh.geometry.getAttribute('position');
-      if (!posAttribute) {
-        console.warn(`Skipping mesh with missing position attribute for ${type}`);
-        return;
-      }
-      
-      const normalAttribute = mesh.geometry.getAttribute('normal');
-      if (!normalAttribute) {
-        // Versuche Normalen zu berechnen, falls nicht vorhanden
-        mesh.geometry.computeVertexNormals();
-      }
-      
-      // Nach erneutem Versuch prüfen
-      const normalAttr = mesh.geometry.getAttribute('normal');
-      const uvAttribute = mesh.geometry.getAttribute('uv');
-      
-      // Matrix für die Positionierung
-      const matrix = new THREE.Matrix4().setPosition(position);
-      
-      // Normalenmatrix für Transformationen
-      const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
-      
-      // Temporärer Vertex für Transformationen
-      const tempVertex = new THREE.Vector3();
-      const tempNormal = new THREE.Vector3();
-      
-      // Füge Vertex-Daten hinzu
-      for (let i = 0; i < posAttribute.count; i++) {
-        // Vertex-Position mit Matrix transformieren
-        tempVertex.fromBufferAttribute(posAttribute, i);
-        tempVertex.applyMatrix4(matrix);
-        
-        positions.push(tempVertex.x, tempVertex.y, tempVertex.z);
-        
-        // Normale richtig transformieren
-        if (normalAttr) {
-          tempNormal.fromBufferAttribute(normalAttr, i);
-          tempNormal.applyMatrix3(normalMatrix);
-          tempNormal.normalize();
-          normals.push(tempNormal.x, tempNormal.y, tempNormal.z);
-        } else {
-          // Fallback-Normale, falls keine vorhanden
-          normals.push(0, 1, 0);
-        }
-        
-        // UV-Koordinaten - wichtig für korrekte Texturierung
-        if (uvAttribute && uvAttribute.count > i) {
-          uvs.push(
-            uvAttribute.getX(i),
-            uvAttribute.getY(i)
-          );
-        } else {
-          // Fallback, falls keine UVs vorhanden
-          uvs.push(0, 0);
-        }
-      }
-      
-      // Wenn die Geometrie Indices hat, übernehme diese mit korrektem Offset
-      const indexAttribute = mesh.geometry.getIndex();
-      if (indexAttribute) {
-        for (let i = 0; i < indexAttribute.count; i++) {
-          indices.push(indexAttribute.getX(i) + indexOffset);
-        }
-      } else {
-        // Wenn keine Indices existieren, generiere Dreiecke
-        for (let i = 0; i < posAttribute.count; i += 3) {
-          indices.push(
-            i + indexOffset,
-            i + 1 + indexOffset,
-            i + 2 + indexOffset
-          );
-        }
-      }
-      
-      // Erhöhe Offset für nächstes Mesh
-      indexOffset += posAttribute.count;
-      
-      // Verstecke das Original-Mesh, da wir jetzt die zusammengeführte Version haben
-      mesh.visible = false;
-    });
-    
-    // Überprüfe, ob wir Daten gesammelt haben
-    if (positions.length === 0) {
-      console.warn(`No valid geometries found for type ${type}`);
-      return;
-    }
-    
-    // Setze die Attribute der zusammengeführten Geometrie
-    mergedGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    mergedGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-    mergedGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-    
-    // Setze Indices, falls vorhanden
-    if (indices.length > 0) {
-      mergedGeometry.setIndex(indices);
-    }
-    
-    // Erstelle das zusammengeführte Mesh
-    const mergedMesh = new THREE.Mesh(mergedGeometry, material);
-    mergedMesh.name = `merged_${type}`;
-    
-    // Übernehme Schatten-Eigenschaften vom Referenz-Mesh
-    mergedMesh.castShadow = refMesh.castShadow;
-    mergedMesh.receiveShadow = refMesh.receiveShadow;
-    
-    // Stelle sicher, dass die Texturwerte korrekt sind
-    if (material && material.map) {
-      material.map.needsUpdate = true;
-    }
-    
-    // Füge zum Container hinzu
-    this.mergedGeometries.add(mergedMesh);
   }
   
   // Hilfsmethode zur Diagnose der Karte für Debugging
@@ -2013,4 +1971,47 @@ export class Map {
       }
     });
   }
-} 
+  
+  // Erstellt Bounding-Boxen für alle Chunks zur Optimierung des Cullings
+  createChunkBoundingBoxes() {
+    try {
+      // Für jeden Chunk eine Bounding Box erstellen
+      for (const chunkId in this.chunks) {
+        const chunk = this.chunks[chunkId];
+        
+        // Erstelle eine neue Bounding Box für diesen Chunk
+        const min = new THREE.Vector3(Infinity, Infinity, Infinity);
+        const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+        
+        // Berechne die Min/Max-Werte basierend auf Tile-Positionen
+        chunk.tiles.forEach(tile => {
+          // Hole die Position des Tiles
+          const position = tile.container.position;
+          
+          // Aktualisiere Min/Max-Werte
+          min.x = Math.min(min.x, position.x);
+          min.y = Math.min(min.y, position.y);
+          min.z = Math.min(min.z, position.z);
+          
+          max.x = Math.max(max.x, position.x + this.tileSize);
+          max.y = Math.max(max.y, position.y + 3); // Höhe berücksichtigen (Annahme: max 3 Einheiten)
+          max.z = Math.max(max.z, position.z + this.tileSize);
+        });
+        
+        // Erstelle die Bounding Box
+        chunk.boundingBox = new THREE.Box3(min, max);
+        
+        // Optional: Erstelle ein visuelles Hilfsmittel für Debugging
+        if (this.game.debugMode) {
+          const helper = new THREE.Box3Helper(chunk.boundingBox, 0xff0000);
+          this.container.add(helper);
+          chunk.boundingBoxHelper = helper;
+        }
+      }
+      
+      console.log(`Created bounding boxes for ${Object.keys(this.chunks).length} chunks`);
+    } catch (error) {
+      console.error("Error creating chunk bounding boxes:", error);
+    }
+  }
+} // Ende der Map-Klasse
