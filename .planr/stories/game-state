@@ -1,0 +1,56 @@
+# Implement game state management (menu, game, death)
+
+## Description
+Add a robust game state management system to handle transitions between different game states including menu, playing, paused, game over, and victory states.
+
+## Acceptance Criteria
+- [x] Create a main menu screen with game title and start button
+- [x] Implement a pause menu accessible via ESC key
+- [x] Create a game over screen showing score and restart button
+- [x] Design a victory screen showing game statistics
+- [x] Add difficulty selection options in the main menu
+- [x] Ensure smooth transitions between all game states
+- [x] Properly handle player death state
+- [x] Integrate with existing UI systems
+- [x] Maintain backward compatibility with existing code
+
+## Technical Requirements
+- [x] Create a GameStateManager class to centralize state transitions
+- [x] Update UI class to support different game states
+- [x] Modify player class to integrate with game state system
+- [x] Update ZombieManager to use game state for victory condition
+
+## Challenges
+- Had to ensure proper integration with existing code without breaking functionality
+- Needed to maintain backward compatibility for functions that directly manipulated game state
+- Had to design a flexible event system for state transitions
+
+## Developer Notes
+Implemented a comprehensive GameStateManager system that centralizes all game state transitions with the following features:
+
+1. Created a new GameStateManager class with five main states:
+   - Menu: Initial start menu with game title and options
+   - Playing: Active gameplay state
+   - Paused: Game paused with menu overlay
+   - Game Over: Player death state with restart option
+   - Victory: Game completion state with statistics
+
+2. Added smooth transitions between states with enter/exit callbacks that:
+   - Show/hide appropriate UI elements
+   - Control game systems (pausing, stopping, restarting)
+   - Manage pointer lock for player control
+   - Update game state properties
+
+3. Enhanced UI system with:
+   - New main menu with game title, start button, and difficulty options
+   - Improved pause menu with settings access
+   - Better game over screen with score display
+   - Victory screen showing comprehensive game statistics
+
+4. Integrated with existing systems:
+   - Modified Player.die() to use GameStateManager
+   - Updated ZombieManager.onGameComplete() to trigger victory state
+   - Modified Game.js to initialize and use GameStateManager
+   - Updated main.js to handle restart button with state manager
+
+All changes maintain backward compatibility with direct function calls for systems that don't use the state manager, ensuring the game works even if some components haven't been updated to use the new system. 

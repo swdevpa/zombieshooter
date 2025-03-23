@@ -1016,14 +1016,20 @@ export class ZombieManager {
   onGameComplete() {
     console.log('All waves completed! Game won!');
     
-    // Update game state
-    if (this.game.gameState) {
-      this.game.gameState.status = 'won';
-    }
-    
-    // Show game complete UI if available
-    if (this.game.uiManager) {
-      this.game.uiManager.showGameComplete(this.waveProgression.waveStats);
+    // Use game state manager if available
+    if (this.game.gameStateManager) {
+      this.game.gameStateManager.changeState(this.game.gameStateManager.states.VICTORY);
+    } else {
+      // Fallback to old behavior
+      // Update game state
+      if (this.game.gameState) {
+        this.game.gameState.status = 'won';
+      }
+      
+      // Show game complete UI if available
+      if (this.game.uiManager) {
+        this.game.uiManager.showGameComplete(this.waveProgression.waveStats);
+      }
     }
   }
 

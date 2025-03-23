@@ -48,8 +48,13 @@ async function init() {
 
     // Add event listener for restart button
     document.getElementById('restart').addEventListener('click', () => {
-      document.getElementById('game-over').style.display = 'none';
-      game.restart();
+      if (game.gameStateManager) {
+        game.gameStateManager.changeState(game.gameStateManager.states.PLAYING);
+      } else {
+        // Fallback for older code
+        document.getElementById('game-over').style.display = 'none';
+        game.restart();
+      }
     });
   } catch (error) {
     console.error('Error initializing game:', error);

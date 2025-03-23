@@ -22,6 +22,7 @@ import { WeaponManager } from './managers/WeaponManager.js';
 import { SoundManager } from './managers/SoundManager.js';
 import { NavigationGrid } from './world/NavigationGrid.js';
 import { DamageManager } from './managers/DamageManager.js';
+import { GameStateManager } from './managers/GameStateManager.js';
 
 export class Game {
   constructor(container, assetLoader) {
@@ -197,21 +198,28 @@ export class Game {
     
     // Initialize damage manager
     this.damageManager = new DamageManager(this, this.assetLoader);
+    
+    // Initialize game state manager
+    this.gameStateManager = new GameStateManager(this);
+    this.gameStateManager.init();
   }
 
   setupEvents() {
     // Handle window resize
-    window.addEventListener('resize', this.onResize.bind(this));
+    window.addEventListener('resize', this.onResize.bind(this), false);
 
     // Setup pointer lock events
     document.addEventListener('pointerlockchange', this.onPointerLockChange.bind(this), false);
     document.addEventListener('pointerlockerror', this.onPointerLockError.bind(this), false);
 
     // Setup click-to-play
-    const clickToPlay = document.getElementById('click-to-play');
-    if (clickToPlay) {
-      clickToPlay.addEventListener('click', this.requestPointerLock.bind(this), false);
-    }
+    const container = this.container || document.body;
+    container.addEventListener('click', () => {
+      // Only request pointer lock if the game is actually running
+      if (!this.gameOver && !document.pointerLockElement) {
+        this.requestPointerLock();
+      }
+    });
 
     // Setup mouse movement for camera control
     document.addEventListener('mousemove', this.onMouseMove.bind(this), false);
@@ -509,6 +517,18 @@ export class Game {
     
     // Trigger a resize to ensure everything is properly sized
     this.onResize();
+
+    // Show main menu instead of just starting the game
+    if (this.gameStateManager) {
+      // Game will start from the menu, not automatically
+      this.running = false;
+    } else {
+      // Fall back to old behavior if state manager not available
+      this.start();
+    }
+    
+    // Return for chaining
+    return this;
   }
 
   // Mark objects in the city as collidable for collision detection
@@ -554,7 +574,7 @@ export class Game {
       zombiesKilled: 0,
       wave: 1,
       score: 0,
-      difficulty: 'normal'
+      difficulty: this.gameState?.difficulty || 'normal'
     };
 
     // Reset player
@@ -591,50 +611,72 @@ export class Game {
   pause() {
     if (!this.paused) {
       this.paused = true;
-
-      // Show pause UI
-      this.uiManager.showPauseMenu();
+      
+      // We use GameStateManager now instead of directly calling UI
+      // Leave this for backward compatibility
+      if (!this.gameStateManager) {
+        this.uiManager.showPauseMenu();
+      }
     }
   }
 
   unpause() {
     if (this.paused) {
       this.paused = false;
-
-      // Hide pause UI
-      this.uiManager.hidePauseMenu();
-
-      // Reset timing to prevent huge delta time after unpausing
-      this.lastTime = performance.now();
+      
+      // We use GameStateManager now instead of directly calling UI
+      // Leave this for backward compatibility
+      if (!this.gameStateManager) {
+        this.uiManager.hidePauseMenu();
+      }
     }
   }
 
   togglePause() {
-    if (this.paused) {
-      this.unpause();
-      this.requestPointerLock();
+    if (this.gameStateManager) {
+      // Use state manager if available
+      if (this.paused) {
+        this.gameStateManager.changeState(this.gameStateManager.states.PLAYING);
+      } else {
+        this.gameStateManager.changeState(this.gameStateManager.states.PAUSED);
+      }
     } else {
-      this.pause();
+      // Fall back to old behavior
+      if (this.paused) {
+        this.unpause();
+      } else {
+        this.pause();
+      }
     }
   }
 
   gameOverState() {
-    this.gameOver = true;
-    this.running = false;
-    this.zombieManager.stopSpawning();
+    // Use state manager if available
+    if (this.gameStateManager) {
+      this.gameStateManager.changeState(this.gameStateManager.states.GAME_OVER);
+    } else {
+      // Fall back to old behavior
+      this.gameOver = true;
+      this.running = false;
+      this.zombieManager.stopSpawning();
 
-    // Show game over UI
-    this.uiManager.showGameOverMenu(this.score);
+      // Show game over UI
+      this.uiManager.showGameOver(this.score);
 
-    // Release pointer lock
-    document.exitPointerLock();
+      // Release pointer lock
+      document.exitPointerLock();
+    }
   }
 
   restart() {
-    this.start();
-
-    // Request pointer lock again
-    this.requestPointerLock();
+    // Use state manager if available
+    if (this.gameStateManager) {
+      this.gameStateManager.changeState(this.gameStateManager.states.PLAYING);
+    } else {
+      // Fall back to old behavior
+      this.gameOver = false;
+      this.start();
+    }
   }
 
   updateFPS(deltaTime) {

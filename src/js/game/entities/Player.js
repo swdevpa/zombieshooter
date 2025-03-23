@@ -496,8 +496,13 @@ export class Player {
     this.mesh.material.color.set(0xff0000); // Turn red
     this.mesh.rotation.x = Math.PI / 2; // Fall over
 
-    // Game over
-    this.game.gameOver();
+    // Game over - use game state manager if available
+    if (this.game.gameStateManager) {
+      this.game.gameStateManager.changeState(this.game.gameStateManager.states.GAME_OVER);
+    } else {
+      // Fallback to old method
+      this.game.gameOverState();
+    }
   }
 
   reset() {

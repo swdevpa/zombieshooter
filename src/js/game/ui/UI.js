@@ -44,6 +44,9 @@ export class UI {
     
     // Create settings UI elements if they don't exist
     this.createSettingsUI();
+    
+    // Create main menu UI elements if they don't exist
+    this.createMainMenuUI();
 
     // Default max values (will be updated from player when it's available)
     this.defaultMaxHealth = 100;
@@ -1623,6 +1626,227 @@ export class UI {
           this.reloadIndicator.classList.remove('pulse');
         }, 1000); // Animation duration
       }
+    }
+  }
+
+  /**
+   * Create main menu UI
+   */
+  createMainMenuUI() {
+    if (!document.getElementById('main-menu')) {
+      // Create main menu container
+      const mainMenu = document.createElement('div');
+      mainMenu.id = 'main-menu';
+      
+      // Add HTML content
+      mainMenu.innerHTML = `
+        <div class="menu-content">
+          <h1>ZOMBIE WAVE SHOOTER</h1>
+          <div class="menu-buttons">
+            <button id="start-game">Start Game</button>
+            <button id="settings-button">Settings</button>
+            <div class="difficulty-selector">
+              <span>Difficulty:</span>
+              <div class="difficulty-options">
+                <button class="difficulty-btn" data-difficulty="easy">Easy</button>
+                <button class="difficulty-btn selected" data-difficulty="normal">Normal</button>
+                <button class="difficulty-btn" data-difficulty="hard">Hard</button>
+              </div>
+            </div>
+          </div>
+          <div class="game-info">
+            <p>Use WASD to move, mouse to aim, click to shoot, R to reload</p>
+            <p>ESC to pause the game</p>
+          </div>
+        </div>
+      `;
+      
+      // Add styles
+      const style = document.createElement('style');
+      style.textContent = `
+        #main-menu {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.85);
+          backdrop-filter: blur(5px);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 1000;
+        }
+        
+        .menu-content {
+          background-color: rgba(40, 40, 40, 0.9);
+          padding: 40px;
+          border-radius: 10px;
+          border: 2px solid #555;
+          text-align: center;
+          color: white;
+          max-width: 600px;
+          width: 90%;
+        }
+        
+        .menu-content h1 {
+          font-size: 36px;
+          margin-bottom: 30px;
+          text-shadow: 0 0 10px #f00;
+          color: #fff;
+        }
+        
+        .menu-buttons {
+          display: flex;
+          flex-direction: column;
+          gap: 15px;
+          margin-bottom: 30px;
+        }
+        
+        .menu-buttons button {
+          padding: 12px 20px;
+          font-size: 18px;
+          background-color: #333;
+          color: white;
+          border: 2px solid #666;
+          border-radius: 5px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        
+        .menu-buttons button:hover {
+          background-color: #444;
+          border-color: #888;
+        }
+        
+        .difficulty-selector {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          margin-top: 10px;
+        }
+        
+        .difficulty-options {
+          display: flex;
+          justify-content: center;
+          gap: 10px;
+        }
+        
+        .difficulty-btn {
+          flex: 1;
+          padding: 8px 12px !important;
+          font-size: 16px !important;
+          opacity: 0.7;
+        }
+        
+        .difficulty-btn.selected {
+          opacity: 1;
+          border-color: #f00 !important;
+          box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+        }
+        
+        .game-info {
+          font-size: 14px;
+          color: #aaa;
+        }
+        
+        .game-info p {
+          margin: 5px 0;
+        }
+      `;
+      document.head.appendChild(style);
+      
+      // Append to body
+      document.body.appendChild(mainMenu);
+      
+      // Hide main menu initially (will be shown by GameStateManager)
+      mainMenu.style.display = 'none';
+      
+      // Add event listeners for buttons
+      document.getElementById('start-game').addEventListener('click', () => {
+        if (this.game.gameStateManager) {
+          this.game.gameStateManager.changeState(this.game.gameStateManager.states.PLAYING);
+        }
+      });
+      
+      document.getElementById('settings-button').addEventListener('click', () => {
+        this.showSettingsMenu();
+      });
+      
+      // Add difficulty selection
+      const difficultyButtons = document.querySelectorAll('.difficulty-btn');
+      difficultyButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          // Remove selected class from all buttons
+          difficultyButtons.forEach(btn => btn.classList.remove('selected'));
+          
+          // Add selected class to clicked button
+          button.classList.add('selected');
+          
+          // Update game difficulty
+          const difficulty = button.dataset.difficulty;
+          if (this.game.gameState) {
+            this.game.gameState.difficulty = difficulty;
+          }
+        });
+      });
+    }
+    
+    // Ensure main menu is hidden at startup
+    this.hideMainMenu();
+  }
+  
+  /**
+   * Show the main menu
+   */
+  showMainMenu() {
+    const mainMenu = document.getElementById('main-menu');
+    if (mainMenu) {
+      mainMenu.style.display = 'flex';
+    }
+    
+    // Hide gameplay UI
+    this.updateGameplayUI(false);
+  }
+  
+  /**
+   * Hide the main menu
+   */
+  hideMainMenu() {
+    const mainMenu = document.getElementById('main-menu');
+    if (mainMenu) {
+      mainMenu.style.display = 'none';
+    }
+  }
+  
+  /**
+   * Update visibility of gameplay UI elements
+   * @param {boolean} visible - Whether gameplay UI should be visible
+   */
+  updateGameplayUI(visible) {
+    // Elements to show/hide
+    const uiElements = [
+      this.healthContainer,
+      this.ammoContainer,
+      this.crosshairElement,
+      document.getElementById('score'),
+      document.getElementById('wave')
+    ];
+    
+    uiElements.forEach(element => {
+      if (element) {
+        element.style.display = visible ? 'flex' : 'none';
+      }
+    });
+  }
+  
+  /**
+   * Hide game completion screen
+   */
+  hideGameComplete() {
+    const gameCompleteElement = document.getElementById('game-complete');
+    if (gameCompleteElement) {
+      gameCompleteElement.style.display = 'none';
     }
   }
 }

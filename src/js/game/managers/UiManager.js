@@ -19,16 +19,31 @@ export class UiManager {
   }
 
   // Health UI
-  updateHealth(health) {
+  updateHealth(health, maxHealth) {
     if (this.ui) {
-      this.ui.updateHealth(health);
+      this.ui.updateHealth(health, maxHealth);
+    }
+  }
+
+  showHealthChange(change) {
+    if (this.ui) {
+      this.ui.showHealthChange(change);
     }
   }
 
   // Ammo UI
   updateAmmo(current, max, reserve = 0) {
     if (this.ui) {
-      this.ui.updateAmmo(current, max, reserve);
+      this.ui.updateAmmo(current, max);
+      if (reserve > 0) {
+        this.ui.updateAmmoReserve(reserve);
+      }
+    }
+  }
+
+  updateAmmoReserve(reserveAmmo) {
+    if (this.ui) {
+      this.ui.updateAmmoReserve(reserveAmmo);
     }
   }
 
