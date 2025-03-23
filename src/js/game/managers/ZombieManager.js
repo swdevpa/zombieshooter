@@ -851,31 +851,23 @@ export class ZombieManager {
   }
 
   onWaveComplete() {
-    console.log(`Wave ${this.currentWave} completed!`);
+    console.log(`Wave ${this.currentWave} complete!`);
     
-    // Stop spawning
-    this.isSpawning = false;
+    // Record wave stats
+    this.recordWaveStats();
     
-    // Calculate time taken for the wave
-    const timeTaken = (performance.now() - this.waveProgression.currentWaveStartTime) / 1000;
-    
-    // Update wave stats
-    if (this.waveProgression.waveStats[this.currentWave]) {
-      this.waveProgression.waveStats[this.currentWave].timeTaken = timeTaken;
-      this.waveProgression.waveStats[this.currentWave].completed = true;
-    }
-    
-    // Award wave completion bonus
+    // Award completion bonus
     this.awardWaveCompletionBonus();
     
-    // Log wave statistics
-    console.log(`Wave ${this.currentWave} statistics:`, 
-      this.waveProgression.waveStats[this.currentWave]);
-    
-    // Check for game completion
-    if (this.currentWave >= this.waveProgression.maxWave) {
+    // Prepare next wave if not at max wave
+    if (this.currentWave < this.waveProgression.maxWave) {
+      // Schedule next wave start
+      setTimeout(() => {
+        this.prepareNextWave();
+      }, 5000); // 5 second break between waves
+    } else {
+      // Game complete - all waves finished
       this.onGameComplete();
-      return;
     }
   }
 
@@ -1034,42 +1026,25 @@ export class ZombieManager {
   }
 
   /**
-   * Award bonus points and items for completing a wave
+   * Award completion bonus for current wave
    */
   awardWaveCompletionBonus() {
-    if (!this.game.player) return;
+    // Calculate if player didn't take damage in this wave
+    const damageFree = this.waveProgression.waveStats[this.currentWave] && 
+                       this.waveProgression.waveStats[this.currentWave].damageTaken === 0;
     
-    // Calculate wave bonus based on wave number and difficulty
-    const baseBonus = this.currentWave * 100;
-    const difficultyBonus = Math.floor(baseBonus * this.waveProgression.difficultyMultiplier);
+    // Award points through score manager
+    if (this.game.scoreManager) {
+      this.game.scoreManager.awardWaveCompletionBonus(this.currentWave, damageFree);
+    }
     
-    // Additional bonus for boss waves
-    const bossMultiplier = this.isBossWave(this.currentWave) ? 2 : 1;
-    const totalBonus = difficultyBonus * bossMultiplier;
+    // Determine wave bonus type for UI feedback
+    const isBossWave = this.isBossWave(this.currentWave);
     
-    // Add score to player
-    this.game.player.addScore(totalBonus);
-    
-    // Show bonus message
+    // Show wave complete message
     if (this.game.uiManager) {
-      this.game.uiManager.showBonusMessage(
-        `Wave ${this.currentWave} Completed!`, 
-        `+${totalBonus} bonus points`
-      );
-    }
-    
-    // Boss waves have a chance for health pack
-    if (this.isBossWave(this.currentWave) && Math.random() < 0.7) {
-      // Spawn health pack near player if entity manager exists
-      if (this.game.entityManager) {
-        this.game.entityManager.spawnHealthPack(this.game.player.position);
-      }
-    }
-    
-    // Spawn ammo pickups for weapon
-    if (this.game.entityManager && Math.random() < 0.8) {
-      const pickupCount = this.isBossWave(this.currentWave) ? 3 : 1;
-      this.game.entityManager.spawnAmmoPickups(pickupCount);
+      const message = isBossWave ? 'BOSS WAVE COMPLETED!' : 'WAVE COMPLETED!';
+      this.game.uiManager.showBonusMessage(message, 'GET READY FOR NEXT WAVE');
     }
   }
 
@@ -1163,6 +1138,30 @@ export class ZombieManager {
       damageSource: 'player'
     });
     
+    // Check if zombie is dead
+    if (zombie.health <= 0 && !zombie.isDead) {
+      zombie.isDead = true;
+      
+      // Award points through ScoreManager
+      if (this.game.scoreManager) {
+        this.game.scoreManager.recordZombieKill(
+          zombie, 
+          hitInfo && hitInfo.hitLocation === 'head'
+        );
+      }
+      
+      // Record kill for wave stats
+      this.waveProgression.killedThisWave++;
+      
+      // Handle special effects based on wave modifiers
+      if (this.hasWaveModifier('explosive')) {
+        this.triggerZombieExplosion(zombie);
+      }
+      
+      // Handle death animation
+      this.handleZombieDeath(zombie);
+    }
+    
     // Return result
     return {
       success,
@@ -1227,5 +1226,192 @@ export class ZombieManager {
         }
       }
     }
+  }
+
+  /**
+   * Record statistics for the current wave
+   */
+  recordWaveStats() {
+    // Stop spawning
+    this.isSpawning = false;
+    
+    // Calculate time taken for the wave
+    const timeTaken = (performance.now() - this.waveProgression.currentWaveStartTime) / 1000;
+    
+    // Update wave stats
+    if (this.waveProgression.waveStats[this.currentWave]) {
+      this.waveProgression.waveStats[this.currentWave].timeTaken = timeTaken;
+      this.waveProgression.waveStats[this.currentWave].completed = true;
+      this.waveProgression.waveStats[this.currentWave].zombiesKilled = this.waveProgression.killedThisWave;
+    }
+    
+    // Log wave statistics
+    console.log(`Wave ${this.currentWave} statistics:`, 
+      this.waveProgression.waveStats[this.currentWave]);
+  }
+  
+  /**
+   * Handle zombie death
+   * @param {Object} zombie - The zombie that died
+   */
+  handleZombieDeath(zombie) {
+    // Remove from active zombies list after delay
+    setTimeout(() => {
+      const index = this.zombies.indexOf(zombie);
+      if (index !== -1) {
+        this.zombies.splice(index, 1);
+      }
+      
+      // Check if wave is complete
+      this.checkWaveComplete();
+      
+      // Clean up zombie mesh
+      if (zombie.mesh) {
+        this.game.scene.remove(zombie.mesh);
+        if (zombie.mesh.geometry) zombie.mesh.geometry.dispose();
+        if (zombie.mesh.material) {
+          if (Array.isArray(zombie.mesh.material)) {
+            zombie.mesh.material.forEach(material => material.dispose());
+          } else {
+            zombie.mesh.material.dispose();
+          }
+        }
+      }
+    }, 2000); // Keep dead zombie visible for 2 seconds
+  }
+
+  zombieAttack(zombie, damage = 10) {
+    // Skip if player is already dead
+    if (!this.game.player.isAlive) {
+      return false;
+    }
+    
+    // Play attack sound
+    if (this.game.soundManager) {
+      const zombieType = zombie.zombieType || 'standard';
+      this.game.soundManager.playSfx(`zombie_${zombieType}_attack`, {
+        category: 'zombie',
+        spatial: true,
+        position: zombie.mesh.position.clone(),
+        pooled: true
+      });
+    }
+    
+    // Process damage to player
+    this.game.player.takeDamage(damage, { sourcePosition: zombie.mesh.position });
+    
+    return true;
+  }
+  
+  handleExploderDeath(zombie) {
+    // Play explosion sound
+    if (this.game.soundManager) {
+      this.game.soundManager.playSfx('zombie_exploder_explosion', {
+        category: 'zombie',
+        spatial: true,
+        position: zombie.mesh.position.clone(),
+        volume: 1.0
+      });
+    }
+    
+    // Create explosion effect and damage nearby entities
+    const explosionRadius = 5;
+    const explosionDamage = 50;
+    
+    // Create visual explosion effect
+    this.createExplosionEffect(zombie.mesh.position.clone(), explosionRadius);
+    
+    // Damage player if within radius
+    const distanceToPlayer = zombie.mesh.position.distanceTo(this.game.player.container.position);
+    if (distanceToPlayer < explosionRadius) {
+      // Calculate damage based on distance (more damage closer to explosion)
+      const damageMultiplier = 1 - (distanceToPlayer / explosionRadius);
+      const damage = Math.round(explosionDamage * damageMultiplier);
+      this.game.player.takeDamage(damage, { sourcePosition: zombie.mesh.position });
+    }
+    
+    // Damage other zombies within radius
+    for (const otherZombie of this.zombies) {
+      if (otherZombie !== zombie && otherZombie.isAlive) {
+        const distance = zombie.mesh.position.distanceTo(otherZombie.mesh.position);
+        if (distance < explosionRadius) {
+          // Calculate damage based on distance
+          const damageMultiplier = 1 - (distance / explosionRadius);
+          const damage = Math.round(explosionDamage * damageMultiplier);
+          otherZombie.takeDamage(damage);
+        }
+      }
+    }
+  }
+  
+  handleScreamerDeath(zombie) {
+    // Play scream sound on death
+    if (this.game.soundManager) {
+      this.game.soundManager.playSfx('zombie_screamer_scream', {
+        category: 'zombie',
+        spatial: true,
+        position: zombie.mesh.position.clone(),
+        volume: 1.0
+      });
+    }
+    
+    // Screamer death triggers nearby zombies to run faster
+    const effectRadius = 15;
+    
+    // Create visual effect
+    this.createScreamEffect(zombie.mesh.position.clone(), effectRadius);
+    
+    // Affect nearby zombies - make them more aggressive
+    for (const otherZombie of this.zombies) {
+      if (otherZombie !== zombie && otherZombie.isAlive) {
+        const distance = zombie.mesh.position.distanceTo(otherZombie.mesh.position);
+        if (distance < effectRadius) {
+          // Increase speed and aggression of nearby zombies
+          otherZombie.speed *= 1.5;
+          otherZombie.isEnraged = true;
+          otherZombie.updateAppearance(); // Change appearance to show enraged state
+        }
+      }
+    }
+  }
+  
+  playZombieGrowl(zombie) {
+    if (!this.game.soundManager) return;
+    
+    // Only play growl with some probability to avoid too many sounds
+    if (Math.random() > 0.1) return;
+    
+    // Check if zombie is close enough to player to hear growl
+    const distanceToPlayer = zombie.mesh.position.distanceTo(this.game.player.container.position);
+    const maxGrowlDistance = 30;
+    
+    if (distanceToPlayer > maxGrowlDistance) return;
+    
+    // Determine zombie type
+    const zombieType = zombie.zombieType || 'standard';
+    
+    // Play appropriate growl sound
+    this.game.soundManager.playSfx(`zombie_${zombieType}_growl`, {
+      category: 'zombie',
+      spatial: true,
+      position: zombie.mesh.position.clone(),
+      pooled: true,
+      volume: 0.7 * (1 - distanceToPlayer / maxGrowlDistance) // Quieter when further away
+    });
+  }
+  
+  handleExploderWarning(zombie) {
+    // Play warning sound before explosion
+    if (this.game.soundManager && !zombie.isPlayingWarningSound) {
+      zombie.isPlayingWarningSound = true;
+      this.game.soundManager.playSfx('zombie_exploder_warning', {
+        category: 'zombie',
+        spatial: true,
+        position: zombie.mesh.position.clone(),
+        volume: 1.0
+      });
+    }
+    
+    // Visual warning effect (handled in zombie's update method)
   }
 }

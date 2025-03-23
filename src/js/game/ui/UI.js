@@ -5,6 +5,8 @@ export class UI {
     // UI elements
     this.scoreElement = document.getElementById('score');
     this.waveElement = document.getElementById('wave');
+    this.multiplierElement = document.getElementById('score-multiplier');
+    this.highScoreElement = document.getElementById('high-score');
 
     // Health UI elements
     this.healthContainer = document.getElementById('health-container');
@@ -54,6 +56,8 @@ export class UI {
 
     // Initialize UI with safe default values
     this.updateScore(0);
+    this.updateHighScore(0);
+    this.updateScoreMultiplier(1.0);
     this.updateWave(1);
     this.updateHealth(100);
     this.updateAmmo(30, 30);
@@ -61,6 +65,12 @@ export class UI {
     
     // Initialize settings
     this.initializeSettings();
+    
+    // Score popup container
+    this.scorePopupContainer = document.getElementById('score-popup-container');
+    if (!this.scorePopupContainer) {
+      this.createScorePopupContainer();
+    }
   }
 
   // Update-Methode, die im Game-Loop aufgerufen wird
@@ -75,21 +85,280 @@ export class UI {
       }
     }
 
-    // Aktualisiere Score basierend auf Game-State
-    this.updateScore(this.game.gameState?.score || this.game.score || 0);
+    // Aktualisiere Score und Highscore basierend auf ScoreManager
+    if (this.game.scoreManager) {
+      this.updateScore(this.game.scoreManager.currentScore);
+      this.updateHighScore(this.game.scoreManager.highScore);
+      this.updateScoreMultiplier(this.game.scoreManager.scoreMultiplier);
+    }
+
+    // Aktualisiere Welle basierend auf ZombieManager
+    if (this.game.zombieManager) {
+      this.updateWave(this.game.zombieManager.currentWave);
+    }
 
     // Andere UI-Updates könnten hier hinzugefügt werden
   }
 
   updateScore(score) {
     if (this.scoreElement) {
+      // Animate score change
+      this.scoreElement.classList.remove('score-pulse');
+      void this.scoreElement.offsetWidth; // Trigger reflow
+      this.scoreElement.classList.add('score-pulse');
+      
       this.scoreElement.textContent = `Score: ${score}`;
     }
+  }
+
+  updateHighScore(score) {
+    if (this.highScoreElement) {
+      this.highScoreElement.textContent = `High Score: ${score}`;
+    }
+  }
+  
+  /**
+   * Show that a new high score was achieved
+   * @param {number} score - The new high score
+   */
+  showNewHighScore(score) {
+    // Update high score display
+    this.updateHighScore(score);
+    
+    // Create and show high score notification
+    const notification = document.createElement('div');
+    notification.className = 'new-high-score-notification';
+    notification.textContent = 'NEW HIGH SCORE!';
+    document.body.appendChild(notification);
+    
+    // Add notification styles if they don't exist
+    let style = document.getElementById('high-score-notification-style');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'high-score-notification-style';
+      style.textContent = `
+        .new-high-score-notification {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background-color: rgba(0, 0, 0, 0.7);
+          color: #ffcc00;
+          font-family: 'Arial', sans-serif;
+          font-size: 36px;
+          font-weight: bold;
+          padding: 20px 40px;
+          border-radius: 10px;
+          border: 2px solid #ffcc00;
+          z-index: 1000;
+          text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+          animation: highScoreNotification 2s ease-in-out forwards;
+        }
+        @keyframes highScoreNotification {
+          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+          20% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+          30% { transform: translate(-50%, -50%) scale(1); }
+          80% { opacity: 1; }
+          100% { opacity: 0; transform: translate(-50%, -50%) scale(1.2); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    
+    // Remove notification after animation
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.parentNode.removeChild(notification);
+      }
+    }, 2000);
+  }
+  
+  /**
+   * Update score multiplier display
+   * @param {number} multiplier - Current score multiplier
+   */
+  updateScoreMultiplier(multiplier) {
+    if (this.multiplierElement) {
+      // Format multiplier to 1 decimal place
+      const formattedMultiplier = multiplier.toFixed(1);
+      this.multiplierElement.textContent = `x${formattedMultiplier}`;
+      
+      // Change color based on multiplier value
+      if (multiplier >= 4.0) {
+        this.multiplierElement.style.color = '#ff3366'; // Red for high multiplier
+        this.multiplierElement.style.fontSize = '22px';
+      } else if (multiplier >= 3.0) {
+        this.multiplierElement.style.color = '#ff9900'; // Orange
+        this.multiplierElement.style.fontSize = '20px';
+      } else if (multiplier >= 2.0) {
+        this.multiplierElement.style.color = '#ffcc00'; // Yellow
+        this.multiplierElement.style.fontSize = '19px';
+      } else {
+        this.multiplierElement.style.color = '#aaaaaa'; // Gray for base multiplier
+        this.multiplierElement.style.fontSize = '18px';
+      }
+    }
+  }
+  
+  /**
+   * Show score popup at specific screen position
+   * @param {number} points - Points to display
+   * @param {number} x - Screen X position
+   * @param {number} y - Screen Y position
+   * @param {string} type - Type of score event (kill, headshot, etc.)
+   * @param {number} progress - Animation progress (0-1)
+   */
+  showScorePopup(points, x, y, type = 'kill', progress = 0) {
+    if (!this.scorePopupContainer) return;
+    
+    // Create popup element if it doesn't exist
+    const popupId = `score-popup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    let popup = document.getElementById(popupId);
+    
+    if (!popup) {
+      popup = document.createElement('div');
+      popup.id = popupId;
+      popup.className = `score-popup ${type}`;
+      
+      // Determine text content based on type
+      if (type === 'headshot') {
+        popup.textContent = `+${points} HEADSHOT!`;
+      } else if (type === 'wave_bonus') {
+        popup.textContent = `+${points} WAVE BONUS!`;
+      } else if (type === 'boss_wave') {
+        popup.textContent = `+${points} BOSS WAVE BONUS!`;
+      } else {
+        popup.textContent = `+${points}`;
+      }
+      
+      // Position popup
+      popup.style.left = `${x}px`;
+      popup.style.top = `${y}px`;
+      
+      // Add to container
+      this.scorePopupContainer.appendChild(popup);
+      
+      // Remove after animation completes
+      setTimeout(() => {
+        if (popup.parentNode) {
+          popup.parentNode.removeChild(popup);
+        }
+      }, 2000);
+    }
+  }
+  
+  /**
+   * Show bonus message in center of screen
+   * @param {string} message - Main message text
+   * @param {string} details - Additional details
+   */
+  showBonusMessage(message, details) {
+    // Create message container if it doesn't exist
+    let bonusContainer = document.getElementById('bonus-message-container');
+    
+    if (!bonusContainer) {
+      bonusContainer = document.createElement('div');
+      bonusContainer.id = 'bonus-message-container';
+      bonusContainer.className = 'bonus-message-container';
+      document.body.appendChild(bonusContainer);
+      
+      // Add styles
+      const style = document.createElement('style');
+      style.textContent = `
+        .bonus-message-container {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          pointer-events: none;
+        }
+        .bonus-message {
+          font-family: 'Arial', sans-serif;
+          font-size: 48px;
+          font-weight: bold;
+          color: #ffcc00;
+          text-shadow: 3px 3px 5px rgba(0, 0, 0, 0.7);
+          text-align: center;
+          white-space: nowrap;
+        }
+        .bonus-details {
+          font-family: 'Arial', sans-serif;
+          font-size: 32px;
+          color: white;
+          text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+          margin-top: 10px;
+          text-align: center;
+        }
+        .fade-in-out {
+          animation: fadeInOut 2.5s ease-in-out forwards;
+        }
+        @keyframes fadeInOut {
+          0% { opacity: 0; transform: scale(0.8); }
+          20% { opacity: 1; transform: scale(1.1); }
+          30% { transform: scale(1); }
+          70% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    
+    // Clear existing messages
+    bonusContainer.innerHTML = '';
+    
+    // Create message elements
+    const messageElement = document.createElement('div');
+    messageElement.className = 'bonus-message fade-in-out';
+    messageElement.textContent = message;
+    bonusContainer.appendChild(messageElement);
+    
+    if (details) {
+      const detailsElement = document.createElement('div');
+      detailsElement.className = 'bonus-details fade-in-out';
+      detailsElement.textContent = details;
+      bonusContainer.appendChild(detailsElement);
+    }
+    
+    // Remove after animation
+    setTimeout(() => {
+      if (bonusContainer.parentNode) {
+        bonusContainer.innerHTML = '';
+      }
+    }, 2500);
   }
 
   updateWave(wave) {
     if (this.waveElement) {
       this.waveElement.textContent = `Wave: ${wave}`;
+    } else {
+      // Create wave element if it doesn't exist
+      this.waveElement = document.createElement('div');
+      this.waveElement.id = 'wave';
+      this.waveElement.className = 'wave-indicator';
+      this.waveElement.textContent = `Wave: ${wave}`;
+      document.body.appendChild(this.waveElement);
+      
+      // Add styles
+      const style = document.createElement('style');
+      style.textContent = `
+        .wave-indicator {
+          position: absolute;
+          bottom: 50px;
+          right: 10px;
+          font-family: 'Arial', sans-serif;
+          font-size: 20px;
+          font-weight: bold;
+          color: white;
+          text-shadow: 2px 2px 2px rgba(0, 0, 0, 0.5);
+          z-index: 100;
+        }
+      `;
+      document.head.appendChild(style);
     }
   }
 
@@ -306,57 +575,97 @@ export class UI {
   }
 
   showGameOver(score) {
-    if (this.gameOverElement) {
-      this.gameOverElement.style.display = 'flex';
-      
-      if (this.finalScoreElement) {
-        this.finalScoreElement.textContent = score;
-      }
-    }
+    this.gameOverElement.style.display = 'flex';
+    this.finalScoreElement.textContent = score;
+    
+    // Play game over sound
+    this.playUISound('ui_menu_open');
   }
 
   hideGameOver() {
-    if (this.gameOverElement) {
-      this.gameOverElement.style.display = 'none';
-    }
+    this.gameOverElement.style.display = 'none';
+    
+    // Play UI close sound
+    this.playUISound('ui_menu_close');
   }
 
   updatePause(isPaused) {
-    // Update UI based on pause state
     if (isPaused) {
-      this.showPauseMenu();
+      document.getElementById('pause-indicator').style.display = 'flex';
+      
+      // Play pause sound
+      this.playUISound('ui_pause');
     } else {
-      this.hidePauseMenu();
+      document.getElementById('pause-indicator').style.display = 'none';
+      
+      // Play unpause sound (same as pause)
+      this.playUISound('ui_pause');
     }
   }
 
   showWaveMessage(waveNumber, subtitle) {
-    // Create a wave message element if it doesn't exist
-    let waveMessageElement = document.getElementById('wave-message');
-    
-    if (!waveMessageElement) {
-      waveMessageElement = document.createElement('div');
-      waveMessageElement.id = 'wave-message';
-      document.body.appendChild(waveMessageElement);
+    // Create wave announcement if it doesn't exist
+    let waveAnnouncement = document.getElementById('wave-announcement');
+    if (!waveAnnouncement) {
+      waveAnnouncement = document.createElement('div');
+      waveAnnouncement.id = 'wave-announcement';
+      document.body.appendChild(waveAnnouncement);
+      
+      // Add styles if needed
+      const style = document.createElement('style');
+      style.textContent = `
+        #wave-announcement {
+          position: absolute;
+          top: 40%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          color: white;
+          font-family: 'Arial', sans-serif;
+          text-align: center;
+          z-index: 1000;
+          pointer-events: none;
+          opacity: 0;
+        }
+        #wave-announcement.show {
+          animation: waveAnnounce 5s ease-in-out forwards;
+        }
+        .wave-title {
+          font-size: 64px;
+          font-weight: bold;
+          text-shadow: 0 0 10px rgba(255, 68, 68, 0.8), 0 0 20px rgba(255, 68, 68, 0.5);
+          margin-bottom: 10px;
+        }
+        .wave-subtitle {
+          font-size: 32px;
+          text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+        }
+        @keyframes waveAnnounce {
+          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+          15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+          20% { transform: translate(-50%, -50%) scale(1); }
+          80% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+      `;
+      document.head.appendChild(style);
     }
     
-    // Set the wave message
-    waveMessageElement.innerHTML = `
-      <div>WAVE ${waveNumber}</div>
-      ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ''}
+    // Create the content
+    waveAnnouncement.innerHTML = `
+      <div class="wave-title">WAVE ${waveNumber}</div>
+      ${subtitle ? `<div class="wave-subtitle">${subtitle}</div>` : ''}
     `;
-    waveMessageElement.style.display = 'flex';
     
-    // Animate the wave message
-    waveMessageElement.classList.add('show');
+    // Add show class to trigger animation
+    waveAnnouncement.classList.remove('show');
+    void waveAnnouncement.offsetWidth; // Trigger reflow
+    waveAnnouncement.classList.add('show');
     
-    // Hide the wave message after a delay
-    setTimeout(() => {
-      waveMessageElement.classList.remove('show');
-      setTimeout(() => {
-        waveMessageElement.style.display = 'none';
-      }, 1000); // Animation duration
-    }, 3000); // Display duration
+    // Update wave indicator
+    this.updateWave(waveNumber);
+    
+    // Play wave announcement sound
+    this.playUISound('ui_wave_start');
   }
 
   /**
@@ -447,6 +756,9 @@ export class UI {
         bossWaveElement.style.display = 'none';
       }, 1000); // Animation duration
     }, 5000); // Display duration
+    
+    // Play boss wave announcement sound
+    this.playUISound('ui_wave_start');
   }
 
   /**
@@ -626,6 +938,9 @@ export class UI {
     if (this.game.soundManager) {
       this.game.soundManager.playSound('victory');
     }
+    
+    // Play victory sound
+    this.playUISound('ui_achievement');
   }
 
   showCrosshair(show) {
@@ -879,27 +1194,28 @@ export class UI {
   
   // Show settings menu
   showSettingsMenu() {
-    if (this.settingsContainer) {
-      this.settingsContainer.classList.remove('hidden');
-      this.updateSettings(); // Ensure UI is in sync with current settings
-    }
+    this.settingsContainer.classList.add('visible');
+    
+    // Play UI open sound
+    this.playUISound('ui_menu_open');
   }
   
   // Hide settings menu
   hideSettingsMenu() {
-    if (this.settingsContainer) {
-      this.settingsContainer.classList.add('hidden');
-    }
+    this.settingsContainer.classList.remove('visible');
+    
+    // Play UI close sound
+    this.playUISound('ui_menu_close');
   }
   
   // Toggle settings menu
   toggleSettingsMenu() {
-    if (this.settingsContainer) {
-      if (this.settingsContainer.classList.contains('hidden')) {
-        this.showSettingsMenu();
-      } else {
-        this.hideSettingsMenu();
-      }
+    const isVisible = this.settingsContainer.classList.contains('visible');
+    
+    if (isVisible) {
+      this.hideSettingsMenu();
+    } else {
+      this.showSettingsMenu();
     }
   }
   
@@ -978,12 +1294,18 @@ export class UI {
     }
     
     this.pauseContainer.style.display = 'flex';
+    
+    // Play menu open sound
+    this.playUISound('ui_menu_open');
   }
   
   hidePauseMenu() {
     if (this.pauseContainer) {
       this.pauseContainer.style.display = 'none';
     }
+    
+    // Play menu close sound 
+    this.playUISound('ui_menu_close');
   }
 
   /**
@@ -1048,6 +1370,11 @@ export class UI {
         this.ammoPickupIndicator.style.display = 'none';
       }, 500);
     }, 2000);
+    
+    // Play ammo pickup sound
+    if (this.game && this.game.soundManager) {
+      this.game.soundManager.playSfx('player_ammo_pickup', { category: 'player' });
+    }
   }
 
   /**
@@ -1794,6 +2121,29 @@ export class UI {
     
     // Ensure main menu is hidden at startup
     this.hideMainMenu();
+    
+    // Add click sound to all button elements
+    const addSoundToButtons = () => {
+      const buttons = document.querySelectorAll('.button, button, .menu-item');
+      
+      buttons.forEach(button => {
+        // Avoid adding multiple event listeners
+        if (!button.hasClickSound) {
+          button.addEventListener('click', () => {
+            this.playUISound('ui_button_click');
+          });
+          
+          button.addEventListener('mouseenter', () => {
+            this.playUISound('ui_button_hover');
+          });
+          
+          button.hasClickSound = true;
+        }
+      });
+    };
+    
+    // Add sound to existing buttons
+    addSoundToButtons();
   }
   
   /**
@@ -1847,6 +2197,152 @@ export class UI {
     const gameCompleteElement = document.getElementById('game-complete');
     if (gameCompleteElement) {
       gameCompleteElement.style.display = 'none';
+    }
+  }
+
+  /**
+   * Create container for score popups
+   */
+  createScorePopupContainer() {
+    this.scorePopupContainer = document.createElement('div');
+    this.scorePopupContainer.id = 'score-popup-container';
+    this.scorePopupContainer.className = 'score-popup-container';
+    document.body.appendChild(this.scorePopupContainer);
+    
+    // Add styles for score popups
+    const style = document.createElement('style');
+    style.textContent = `
+      .score-popup-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 100;
+        overflow: hidden;
+      }
+      .score-popup {
+        position: absolute;
+        font-family: 'Arial', sans-serif;
+        font-weight: bold;
+        text-shadow: 2px 2px 2px rgba(0, 0, 0, 0.7);
+        pointer-events: none;
+        white-space: nowrap;
+        animation: scoreFloat 2s ease-out, scoreFade 2s ease-out;
+        will-change: transform, opacity;
+      }
+      @keyframes scoreFloat {
+        0% { transform: translateY(0); }
+        100% { transform: translateY(-50px); }
+      }
+      @keyframes scoreFade {
+        0% { opacity: 1; }
+        70% { opacity: 1; }
+        100% { opacity: 0; }
+      }
+      .score-popup.kill {
+        color: white;
+        font-size: 20px;
+      }
+      .score-popup.headshot {
+        color: #ff9900;
+        font-size: 24px;
+      }
+      .score-popup.wave_bonus {
+        color: #33ccff;
+        font-size: 28px;
+      }
+      .score-popup.boss_wave {
+        color: #ff3366;
+        font-size: 32px;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  /**
+   * Create score UI elements if they don't exist
+   */
+  createScoreUI() {
+    // Check if score container exists
+    let scoreContainer = document.getElementById('score-container');
+    
+    if (!scoreContainer) {
+      // Create score container
+      scoreContainer = document.createElement('div');
+      scoreContainer.id = 'score-container';
+      scoreContainer.className = 'score-container';
+      document.body.appendChild(scoreContainer);
+      
+      // Create score display
+      this.scoreElement = document.createElement('div');
+      this.scoreElement.id = 'score';
+      this.scoreElement.className = 'score';
+      this.scoreElement.textContent = 'Score: 0';
+      scoreContainer.appendChild(this.scoreElement);
+      
+      // Create multiplier display
+      this.multiplierElement = document.createElement('div');
+      this.multiplierElement.id = 'score-multiplier';
+      this.multiplierElement.className = 'score-multiplier';
+      this.multiplierElement.textContent = 'x1.0';
+      scoreContainer.appendChild(this.multiplierElement);
+      
+      // Create high score display
+      this.highScoreElement = document.createElement('div');
+      this.highScoreElement.id = 'high-score';
+      this.highScoreElement.className = 'high-score';
+      this.highScoreElement.textContent = 'High Score: 0';
+      scoreContainer.appendChild(this.highScoreElement);
+      
+      // Add styles to head
+      const style = document.createElement('style');
+      style.textContent = `
+        .score-container {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          z-index: 100;
+          font-family: 'Arial', sans-serif;
+          color: white;
+          text-shadow: 2px 2px 2px rgba(0, 0, 0, 0.5);
+        }
+        .score {
+          font-size: 24px;
+          font-weight: bold;
+          margin-bottom: 5px;
+        }
+        .score-multiplier {
+          font-size: 18px;
+          color: #ffcc00;
+          transition: all 0.2s ease;
+        }
+        .high-score {
+          font-size: 16px;
+          color: #aaffaa;
+          margin-top: 5px;
+        }
+        .score-pulse {
+          animation: scorePulse 0.3s ease;
+        }
+        @keyframes scorePulse {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.2); }
+          100% { transform: scale(1); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
+  // Add sound effect method to UI class
+  playUISound(soundId) {
+    if (this.game && this.game.soundManager) {
+      this.game.soundManager.playSfx(soundId, { category: 'ui' });
     }
   }
 }

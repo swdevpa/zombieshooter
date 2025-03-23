@@ -18,6 +18,10 @@ export class AssetLoader {
     this.textureCache = new Map();
     this.modelCache = new Map();
     this.soundCache = new Map();
+    
+    // Audio context
+    this.audioContext = null;
+    this.audioListener = null;
   }
 
   async loadAssets() {
@@ -1601,5 +1605,256 @@ export class AssetLoader {
     }
     
     ctx.putImageData(imageData, 0, 0);
+  }
+
+  // Sound loading methods
+  async loadSound(name, url, options = {}) {
+    const category = options.category || 'sfx';
+    
+    try {
+      // Update progress UI
+      this._updateProgressUI(
+        (this.loadedAssets / this.totalAssets) * 100,
+        `Loading sound: ${name}...`
+      );
+      
+      // Check if already loaded
+      if (this.soundCache.has(name)) {
+        this.loadedAssets++;
+        return this.soundCache.get(name);
+      }
+      
+      // Create a placeholder buffer for development
+      // In a production environment, this would load from url instead
+      const buffer = await this._createPlaceholderAudioBuffer(name, options);
+      
+      // Store the sound
+      if (!this.sounds[category]) {
+        this.sounds[category] = {};
+      }
+      this.sounds[category][name] = buffer;
+      
+      // Cache the sound
+      this.soundCache.set(name, buffer);
+      
+      // Track progress
+      this.loadedAssets++;
+      
+      return buffer;
+    } catch (error) {
+      console.error(`Error loading sound ${name}:`, error);
+      this.loadingErrors.push({
+        type: 'sound',
+        name,
+        url,
+        message: error.message,
+        stack: error.stack,
+      });
+      
+      // Create error sound
+      const errorBuffer = this._createErrorAudioBuffer();
+      
+      // Store the error sound
+      if (!this.sounds[category]) {
+        this.sounds[category] = {};
+      }
+      this.sounds[category][name] = errorBuffer;
+      
+      // Track progress
+      this.loadedAssets++;
+      
+      return errorBuffer;
+    }
+  }
+  
+  async _createPlaceholderAudioBuffer(name, options = {}) {
+    // Create audio context if not exists
+    if (!this.audioContext) {
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    // Create a short buffer for development
+    const duration = options.duration || 1.0; // 1 second
+    const sampleRate = this.audioContext.sampleRate;
+    const buffer = this.audioContext.createBuffer(2, sampleRate * duration, sampleRate);
+    
+    // Generate different sounds based on the name/category
+    const leftChannel = buffer.getChannelData(0);
+    const rightChannel = buffer.getChannelData(1);
+    
+    // Fill with sounds based on category
+    if (name.includes('music')) {
+      // Music - low frequency sine wave
+      this._generateTone(leftChannel, rightChannel, 220, 0.2, sampleRate, duration);
+    } else if (name.includes('ambient')) {
+      // Ambient - noise-based sound
+      this._generateNoise(leftChannel, rightChannel, 0.05, sampleRate, duration);
+    } else if (name.includes('footstep')) {
+      // Footstep - short click
+      this._generateClick(leftChannel, rightChannel, 0.4, sampleRate, 0.1);
+    } else if (name.includes('zombie')) {
+      // Zombie sounds - lower frequency noise
+      this._generateNoise(leftChannel, rightChannel, 0.3, sampleRate, 0.4);
+      this._applyLowPass(leftChannel, rightChannel, 0.5);
+    } else if (name.includes('ui')) {
+      // UI sounds - high pitched beep
+      this._generateTone(leftChannel, rightChannel, 880, 0.2, sampleRate, 0.2);
+    } else if (name.includes('pistol') || name.includes('shot')) {
+      // Gun sounds - sharp noise burst
+      this._generateNoise(leftChannel, rightChannel, 0.9, sampleRate, 0.2);
+      this._applyEnvelope(leftChannel, rightChannel, 0.01, 0.05);
+    } else if (name.includes('reload')) {
+      // Reload sounds - mechanical clicks
+      this._generateClick(leftChannel, rightChannel, 0.7, sampleRate, 0.2);
+    } else if (name.includes('explosion')) {
+      // Explosion - louder, longer noise
+      this._generateNoise(leftChannel, rightChannel, 0.9, sampleRate, 0.5);
+      this._applyEnvelope(leftChannel, rightChannel, 0.01, 0.4);
+      this._applyLowPass(leftChannel, rightChannel, 0.7);
+    } else {
+      // Default - white noise
+      this._generateNoise(leftChannel, rightChannel, 0.3, sampleRate, 0.3);
+    }
+    
+    return buffer;
+  }
+  
+  _generateTone(leftChannel, rightChannel, frequency, gain, sampleRate, duration) {
+    const numSamples = sampleRate * duration;
+    
+    for (let i = 0; i < numSamples; i++) {
+      const value = Math.sin(2 * Math.PI * frequency * i / sampleRate) * gain;
+      leftChannel[i] = value;
+      rightChannel[i] = value;
+    }
+    
+    // Apply fade out
+    this._applyFadeOut(leftChannel, rightChannel, sampleRate, duration, 0.1);
+  }
+  
+  _generateNoise(leftChannel, rightChannel, gain, sampleRate, duration) {
+    const numSamples = sampleRate * duration;
+    
+    for (let i = 0; i < numSamples; i++) {
+      const value = (Math.random() * 2 - 1) * gain;
+      leftChannel[i] = value;
+      rightChannel[i] = value;
+    }
+    
+    // Apply fade out
+    this._applyFadeOut(leftChannel, rightChannel, sampleRate, duration, 0.1);
+  }
+  
+  _generateClick(leftChannel, rightChannel, gain, sampleRate, duration) {
+    const numSamples = sampleRate * duration;
+    
+    // Initial impulse
+    leftChannel[0] = gain;
+    rightChannel[0] = gain;
+    
+    // Rapid decay
+    for (let i = 1; i < numSamples; i++) {
+      const decay = Math.exp(-i / (sampleRate * 0.01));
+      leftChannel[i] = (Math.random() * 0.1 - 0.05 + gain) * decay;
+      rightChannel[i] = (Math.random() * 0.1 - 0.05 + gain) * decay;
+    }
+  }
+  
+  _applyEnvelope(leftChannel, rightChannel, attackTime, decayTime) {
+    const numSamples = leftChannel.length;
+    const attackSamples = Math.floor(numSamples * attackTime);
+    const decaySamples = Math.floor(numSamples * decayTime);
+    
+    // Attack phase
+    for (let i = 0; i < attackSamples; i++) {
+      const gain = i / attackSamples;
+      leftChannel[i] *= gain;
+      rightChannel[i] *= gain;
+    }
+    
+    // Decay phase
+    for (let i = numSamples - decaySamples; i < numSamples; i++) {
+      const gain = (numSamples - i) / decaySamples;
+      leftChannel[i] *= gain;
+      rightChannel[i] *= gain;
+    }
+  }
+  
+  _applyLowPass(leftChannel, rightChannel, cutoff) {
+    let lastL = 0;
+    let lastR = 0;
+    
+    for (let i = 0; i < leftChannel.length; i++) {
+      lastL = lastL + cutoff * (leftChannel[i] - lastL);
+      lastR = lastR + cutoff * (rightChannel[i] - lastR);
+      leftChannel[i] = lastL;
+      rightChannel[i] = lastR;
+    }
+  }
+  
+  _applyFadeOut(leftChannel, rightChannel, sampleRate, duration, fadeTime) {
+    const fadeStartSample = sampleRate * (duration - fadeTime);
+    const fadeSamples = sampleRate * fadeTime;
+    
+    for (let i = fadeStartSample; i < leftChannel.length; i++) {
+      const gain = (leftChannel.length - i) / fadeSamples;
+      leftChannel[i] *= gain;
+      rightChannel[i] *= gain;
+    }
+  }
+  
+  _createErrorAudioBuffer() {
+    // Create audio context if not exists
+    if (!this.audioContext) {
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    // Create a short error beep
+    const duration = 0.5; // 0.5 seconds
+    const sampleRate = this.audioContext.sampleRate;
+    const buffer = this.audioContext.createBuffer(2, sampleRate * duration, sampleRate);
+    
+    const leftChannel = buffer.getChannelData(0);
+    const rightChannel = buffer.getChannelData(1);
+    
+    // Error sound - alternating frequency
+    for (let i = 0; i < sampleRate * duration; i++) {
+      const freq = 440 + Math.sin(i / 1000) * 220;
+      const value = Math.sin(2 * Math.PI * freq * i / sampleRate) * 0.3;
+      leftChannel[i] = value;
+      rightChannel[i] = value;
+    }
+    
+    return buffer;
+  }
+  
+  setAudioListener(listener) {
+    this.audioListener = listener;
+    // If we have an audio context from the listener, use it
+    if (listener && listener.context) {
+      this.audioContext = listener.context;
+    }
+  }
+  
+  registerSound(name, buffer, category = 'sfx') {
+    // Store the sound
+    if (!this.sounds[category]) {
+      this.sounds[category] = {};
+    }
+    this.sounds[category][name] = buffer;
+    
+    // Cache the sound
+    this.soundCache.set(name, buffer);
+    
+    return buffer;
+  }
+  
+  getSound(name, category = 'sfx') {
+    if (this.sounds[category] && this.sounds[category][name]) {
+      return this.sounds[category][name];
+    }
+    
+    console.warn(`Sound not found: ${name} in category ${category}`);
+    return null;
   }
 }

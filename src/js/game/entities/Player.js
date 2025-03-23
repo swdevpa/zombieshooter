@@ -232,6 +232,16 @@ export class Player {
     // Check boundaries and collisions
     this.checkBounds();
     this.checkCollisions(previousPosition);
+
+    // Update isMoving status for footstep sounds
+    const wasMoving = this.isMoving;
+    const magnitude = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z);
+    this.isMoving = magnitude > 0.1;
+    
+    // If player just started moving, reset footstep timer
+    if (!wasMoving && this.isMoving && this.game.soundManager) {
+      this.game.soundManager.footstepTimer = 0;
+    }
   }
 
   checkCollisions(previousPosition) {
@@ -426,39 +436,41 @@ export class Player {
   }
 
   takeDamage(amount, damageInfo = {}) {
+    // Skip if player is already dead
     if (!this.isAlive) return;
-
-    // Store previous health for damage intensity calculation
-    const prevHealth = this.health;
     
-    // Apply damage
-    this.health -= amount;
-
-    // Calculate damage intensity based on amount relative to max health
-    const damageIntensity = Math.min(1, amount / (this.maxHealth * 0.5));
+    // Calculate actual damage (might be modified by armor, etc)
+    const actualDamage = Math.min(this.health, amount);
     
-    // Get damage direction if source position is provided
-    let damageAngle = null;
+    // Reduce health
+    this.health -= actualDamage;
     
-    if (damageInfo.sourcePosition) {
-      // Calculate angle between player and damage source
-      damageAngle = this.calculateDamageAngle(damageInfo.sourcePosition);
-    }
-
-    // Update UI with health and damage feedback
+    // Update the UI
     if (this.game.uiManager) {
-      // Update health display
-      this.game.uiManager.updateHealth(this.health);
-      
-      // Show damage indicators
-      this.game.uiManager.showDamageFeedback(damageIntensity, damageAngle);
+      this.game.uiManager.updateHealthBar(this.health / this.maxHealth);
     }
-
-    // Check if player died
+    
+    // Play damage sound
+    if (this.game.soundManager) {
+      this.game.soundManager.playSfx('player_damage', { 
+        category: 'player',
+        volume: Math.min(0.5 + (actualDamage / 40), 1.0) // Volume based on damage amount
+      });
+    }
+    
+    // Apply damage effect (screen flash, etc)
+    if (this.game.damageManager) {
+      const damageAngle = this.calculateDamageAngle(damageInfo.sourcePosition);
+      this.game.damageManager.showDamageEffect(actualDamage / this.maxHealth, damageAngle);
+    }
+    
+    // Check if player is dead
     if (this.health <= 0) {
       this.health = 0;
       this.die();
     }
+    
+    return actualDamage;
   }
   
   /**
@@ -491,18 +503,21 @@ export class Player {
 
   die() {
     this.isAlive = false;
-
-    // Visual feedback
-    this.mesh.material.color.set(0xff0000); // Turn red
-    this.mesh.rotation.x = Math.PI / 2; // Fall over
-
-    // Game over - use game state manager if available
-    if (this.game.gameStateManager) {
-      this.game.gameStateManager.changeState(this.game.gameStateManager.states.GAME_OVER);
-    } else {
-      // Fallback to old method
-      this.game.gameOverState();
+    
+    // Play death sound
+    if (this.game.soundManager) {
+      this.game.soundManager.playSfx('player_death', { category: 'player' });
     }
+    
+    // Handle death effects
+    if (this.game.damageManager) {
+      this.game.damageManager.showDeathEffect();
+    }
+    
+    // Trigger game over
+    setTimeout(() => {
+      this.game.gameOverState();
+    }, 2000);
   }
 
   reset() {
@@ -523,7 +538,7 @@ export class Player {
 
     // Update UI
     if (this.game.uiManager) {
-      this.game.uiManager.updateHealth(this.health);
+      this.game.uiManager.updateHealthBar(this.health / this.maxHealth);
     }
   }
 
@@ -568,5 +583,28 @@ export class Player {
     
     // Use the weapon manager to switch weapons
     return this.weaponManager.previousWeapon();
+  }
+
+  heal(amount) {
+    // Skip if player is already dead
+    if (!this.isAlive) return 0;
+    
+    // Calculate actual healing (don't go over max health)
+    const actualHealing = Math.min(this.maxHealth - this.health, amount);
+    
+    // Add health
+    this.health += actualHealing;
+    
+    // Update the UI
+    if (this.game.uiManager) {
+      this.game.uiManager.updateHealthBar(this.health / this.maxHealth);
+    }
+    
+    // Play heal sound
+    if (this.game.soundManager && actualHealing > 0) {
+      this.game.soundManager.playSfx('player_heal', { category: 'player' });
+    }
+    
+    return actualHealing;
   }
 }

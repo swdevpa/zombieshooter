@@ -23,6 +23,7 @@ import { SoundManager } from './managers/SoundManager.js';
 import { NavigationGrid } from './world/NavigationGrid.js';
 import { DamageManager } from './managers/DamageManager.js';
 import { GameStateManager } from './managers/GameStateManager.js';
+import { ScoreManager } from './managers/ScoreManager.js';
 
 export class Game {
   constructor(container, assetLoader) {
@@ -199,9 +200,23 @@ export class Game {
     // Initialize damage manager
     this.damageManager = new DamageManager(this, this.assetLoader);
     
+    // Initialize weapon manager
+    this.weaponManager = new WeaponManager(this);
+    
+    // Initialize scene manager
+    this.sceneManager = new SceneManager(this);
+    
+    // Initialize city manager
+    this.cityManager = new CityManager(this);
+    
+    // Initialize sound manager
+    this.soundManager = new SoundManager(this, this.assetLoader);
+    
     // Initialize game state manager
     this.gameStateManager = new GameStateManager(this);
-    this.gameStateManager.init();
+    
+    // Initialize score manager
+    this.scoreManager = new ScoreManager(this);
   }
 
   setupEvents() {
@@ -527,6 +542,21 @@ export class Game {
       this.start();
     }
     
+    // Add SoundManager initialization
+    if (this.soundManager) {
+      this.soundManager.init();
+      // Share the audio listener with the asset loader
+      if (this.soundManager.listener) {
+        this.assetLoader.setAudioListener(this.soundManager.listener);
+      }
+    }
+
+    // Play background music and ambient sounds when game starts
+    if (this.soundManager) {
+      this.soundManager.playMusic('music_menu');
+      this.soundManager.playAmbient('ambient_city');
+    }
+
     // Return for chaining
     return this;
   }
@@ -582,6 +612,11 @@ export class Game {
       this.player.reset();
     }
 
+    // Reset score for new game
+    if (this.scoreManager) {
+      this.scoreManager.resetScore();
+    }
+
     // Start zombie spawning
     this.zombieManager.startSpawning();
     
@@ -633,39 +668,43 @@ export class Game {
   }
 
   togglePause() {
-    if (this.gameStateManager) {
-      // Use state manager if available
-      if (this.paused) {
-        this.gameStateManager.changeState(this.gameStateManager.states.PLAYING);
-      } else {
-        this.gameStateManager.changeState(this.gameStateManager.states.PAUSED);
+    this.paused = !this.paused;
+    
+    if (this.paused) {
+      this.pause();
+      
+      // Pause all sounds
+      if (this.soundManager) {
+        this.soundManager.pauseAll();
       }
     } else {
-      // Fall back to old behavior
-      if (this.paused) {
-        this.unpause();
-      } else {
-        this.pause();
+      this.unpause();
+      
+      // Resume all sounds
+      if (this.soundManager) {
+        this.soundManager.resumeAll();
       }
     }
+    
+    return this.paused;
   }
 
   gameOverState() {
-    // Use state manager if available
-    if (this.gameStateManager) {
-      this.gameStateManager.changeState(this.gameStateManager.states.GAME_OVER);
-    } else {
-      // Fall back to old behavior
-      this.gameOver = true;
-      this.running = false;
-      this.zombieManager.stopSpawning();
-
-      // Show game over UI
-      this.uiManager.showGameOver(this.score);
-
-      // Release pointer lock
-      document.exitPointerLock();
+    this.gameOver = true;
+    this.running = false;
+    
+    // Play game over music
+    if (this.soundManager) {
+      this.soundManager.playMusic('music_gameover', { fadeIn: true, fadeTime: 3.0 });
     }
+    
+    // Show game over screen
+    if (this.uiManager) {
+      this.uiManager.showGameOver(this.score);
+    }
+    
+    // Release pointer lock
+    document.exitPointerLock();
   }
 
   restart() {
@@ -759,6 +798,11 @@ export class Game {
           } catch (soundError) {
             console.error('Error updating sounds:', soundError);
           }
+        }
+
+        // Update score system
+        if (this.scoreManager) {
+          this.scoreManager.update(deltaTime);
         }
       }
 

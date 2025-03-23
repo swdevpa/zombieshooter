@@ -54,6 +54,30 @@ export class UiManager {
     }
   }
 
+  updateHighScore(score) {
+    if (this.ui) {
+      this.ui.updateHighScore(score);
+    }
+  }
+
+  updateScoreMultiplier(multiplier) {
+    if (this.ui) {
+      this.ui.updateScoreMultiplier(multiplier);
+    }
+  }
+
+  showNewHighScore(score) {
+    if (this.ui) {
+      this.ui.showNewHighScore(score);
+    }
+  }
+
+  showScorePopup(points, x, y, type = 'kill', progress = 0) {
+    if (this.ui) {
+      this.ui.showScorePopup(points, x, y, type, progress);
+    }
+  }
+
   // Wave UI
   updateWave(wave) {
     if (this.ui) {

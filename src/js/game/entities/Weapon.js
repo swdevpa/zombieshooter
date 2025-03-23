@@ -163,40 +163,65 @@ export class Weapon {
    * @returns {boolean} Whether the shot was fired
    */
   shoot() {
-    // Check if we can shoot
-    const now = Date.now() / 1000; // Current time in seconds
-    if (
-      this.isReloading ||
-      now - this.lastFireTime < this.fireRate ||
-      this.currentAmmo <= 0
-    ) {
-      if (this.currentAmmo <= 0) {
-        // Auto-reload when empty
-        this.reload();
-      }
+    // Check if weapon can fire
+    if (this.isReloading) {
       return false;
     }
-    
-    // Update last fire time
-    this.lastFireTime = now;
-    
-    // Decrease ammo
-    this.currentAmmo--;
-    
-    // Show muzzle flash
-    this.showMuzzleFlash();
-    
-    // Play recoil animation
-    this.playRecoilAnimation();
-    
-    // Perform raycast to check for immediate hits
-    const hit = this.performRaycastShot();
-    
-    // If we're not using the raycast shot or it didn't hit anything, create a visible bullet
-    if (!hit) {
-      this.createBullet();
+
+    // Check ammo
+    if (this.currentAmmo <= 0) {
+      // Play empty click sound
+      if (this.game && this.game.soundManager) {
+        this.game.soundManager.playSfx('pistol_empty', { 
+          category: 'weapon',
+          pooled: true
+        });
+      }
+      
+      // Auto reload if out of ammo
+      if (this.reserveAmmo > 0) {
+        this.reload();
+      }
+      
+      return false;
     }
+
+    // Check fire rate
+    const currentTime = performance.now();
+    if (currentTime - this.lastFireTime < this.fireRate * 1000) {
+      return false;
+    }
+
+    // Reduce ammo
+    this.currentAmmo--;
+    this.lastFireTime = currentTime;
+
+    // Play gunshot sound
+    if (this.game && this.game.soundManager) {
+      this.game.soundManager.playSfx('pistol_shot', { 
+        category: 'weapon',
+        pooled: true
+      });
+    }
+
+    // Apply recoil to camera
+    if (this.player.game.applyCameraRecoil) {
+      this.player.game.applyCameraRecoil();
+    }
+
+    // Create bullet effect and perform raycast
+    this.createBullet();
+    this.performRaycastShot();
     
+    // Visual feedback
+    this.showMuzzleFlash();
+    this.playRecoilAnimation();
+
+    // Update ammo display
+    if (this.game && this.game.uiManager) {
+      this.game.uiManager.updateAmmo(this.currentAmmo, this.reserveAmmo);
+    }
+
     return true;
   }
   
@@ -380,70 +405,68 @@ export class Weapon {
    * @param {boolean} isZombie - Whether hit was on a zombie
    */
   createHitEffect(position, normal, isZombie) {
-    if (!this.game || !this.game.scene) return;
+    // Create a hit effect at the impact position
+    const hitGroup = new THREE.Group();
+    hitGroup.position.copy(position);
     
-    if (isZombie) {
-      // Blood splatter effect for zombies
-      const bloodMaterial = new THREE.SpriteMaterial({
-        map: this.assetLoader.getTexture('blood') || new THREE.TextureLoader().load('../assets/textures/blood.png'),
-        color: 0xff0000,
-        transparent: true,
-        opacity: 0.9
-      });
-      
-      const blood = new THREE.Sprite(bloodMaterial);
-      blood.scale.set(0.5, 0.5, 1);
-      blood.position.copy(position);
-      
-      // Add slight offset along normal to prevent z-fighting
-      blood.position.add(normal.clone().multiplyScalar(0.05));
-      
-      // Random rotation
-      blood.material.rotation = Math.random() * Math.PI * 2;
-      
-      // Random scale variation
-      const scale = 0.3 + Math.random() * 0.4;
-      blood.scale.set(scale, scale, 1);
-      
-      // Add to scene
-      this.game.scene.add(blood);
-      
-      // Track for cleanup
-      this.hitMarkers.push({
-        marker: blood,
-        createdAt: Date.now(),
-        lifetime: 2000 + Math.random() * 1000 // 2-3 seconds
-      });
-      
-    } else {
-      // Impact effect for environment (smoke, sparks)
-      const impactMaterial = new THREE.SpriteMaterial({
-        map: this.assetLoader.getTexture('impact') || new THREE.TextureLoader().load('../assets/textures/impact.png'),
-        color: 0xdddddd,
-        transparent: true,
-        opacity: 0.8
-      });
-      
-      const impact = new THREE.Sprite(impactMaterial);
-      impact.scale.set(0.2, 0.2, 1);
-      impact.position.copy(position);
-      
-      // Add slight offset along normal to prevent z-fighting
-      impact.position.add(normal.clone().multiplyScalar(0.01));
-      
-      // Random rotation
-      impact.material.rotation = Math.random() * Math.PI * 2;
-      
-      // Add to scene
-      this.game.scene.add(impact);
-      
-      // Track for cleanup
-      this.hitMarkers.push({
-        marker: impact,
-        createdAt: Date.now(),
-        lifetime: 1000 + Math.random() * 500 // 1-1.5 seconds
-      });
+    // Look at impact direction
+    if (normal) {
+      const lookPoint = new THREE.Vector3().copy(position).add(normal);
+      hitGroup.lookAt(lookPoint);
     }
+    
+    // Add different effects based on hit type
+    if (isZombie) {
+      // Blood splatter for zombie hits
+      this.createBloodSplatter(hitGroup);
+      
+      // Play zombie hit sound
+      if (this.game && this.game.soundManager) {
+        this.game.soundManager.playSfx('bullet_impact_zombie', { 
+          category: 'weapon',
+          spatial: true,
+          position: position,
+          pooled: true
+        });
+      }
+    } else {
+      // Sparks and debris for environment hits
+      this.createSparkEffect(hitGroup);
+      
+      // Play appropriate impact sound based on material (default to wall)
+      let impactSound = 'bullet_impact_wall';
+      
+      // Simple material detection based on object name
+      // This could be improved with actual material properties
+      if (this.lastHitObject) {
+        const objectName = this.lastHitObject.name.toLowerCase();
+        if (objectName.includes('metal')) {
+          impactSound = 'bullet_impact_metal';
+        }
+      }
+      
+      // Play impact sound
+      if (this.game && this.game.soundManager) {
+        this.game.soundManager.playSfx(impactSound, { 
+          category: 'weapon',
+          spatial: true,
+          position: position,
+          pooled: true
+        });
+      }
+    }
+    
+    // Add to scene
+    this.game.scene.add(hitGroup);
+    
+    // Track for cleanup
+    this.hitMarkers.push({
+      object: hitGroup,
+      time: performance.now(),
+      duration: 2000 // 2 seconds
+    });
+    
+    return hitGroup;
   }
   
   /**
@@ -456,14 +479,14 @@ export class Weapon {
     // Find markers to remove
     for (let i = 0; i < this.hitMarkers.length; i++) {
       const marker = this.hitMarkers[i];
-      const age = now - marker.createdAt;
+      const age = now - marker.time;
       
-      if (age > marker.lifetime) {
+      if (age > marker.duration) {
         markersToRemove.push(i);
         
         // Fade out effect
-        if (marker.marker.material) {
-          marker.marker.material.opacity = Math.max(0, 1 - (age / marker.lifetime));
+        if (marker.object.material) {
+          marker.object.material.opacity = Math.max(0, 1 - (age / marker.duration));
         }
       }
     }
@@ -473,12 +496,12 @@ export class Weapon {
       const index = markersToRemove[i];
       const marker = this.hitMarkers[index];
       
-      if (marker.marker && this.game && this.game.scene) {
-        this.game.scene.remove(marker.marker);
+      if (marker.object && this.game && this.game.scene) {
+        this.game.scene.remove(marker.object);
         
         // Dispose of geometry and material to prevent memory leaks
-        if (marker.marker.geometry) marker.marker.geometry.dispose();
-        if (marker.marker.material) marker.marker.material.dispose();
+        if (marker.object.geometry) marker.object.geometry.dispose();
+        if (marker.object.material) marker.object.material.dispose();
       }
       
       this.hitMarkers.splice(index, 1);
@@ -519,60 +542,42 @@ export class Weapon {
    * Reload the weapon
    */
   reload() {
-    // Don't reload if already reloading
-    if (this.isReloading) return;
+    // Skip if already reloading
+    if (this.isReloading) return false;
     
-    // Don't reload if ammo is full
-    if (this.currentAmmo === this.ammoCapacity) return;
+    // Skip if ammo is full
+    if (this.currentAmmo >= this.maxAmmo) return false;
     
-    // Don't reload if reserve ammo is empty
+    // Skip if no reserve ammo
     if (this.reserveAmmo <= 0) {
-      // Play empty click sound or provide feedback
-      if (this.game && this.game.uiManager) {
-        this.game.uiManager.showNoAmmoIndicator();
+      // Play empty click to indicate no ammo
+      if (this.game && this.game.soundManager) {
+        this.game.soundManager.playSfx('pistol_empty', { 
+          category: 'weapon',
+          pooled: true 
+        });
       }
-      return;
+      return false;
     }
     
+    // Start reload process
     this.isReloading = true;
+    this.reloadPhase = 'start';
+    this.reloadStartTime = performance.now();
     
-    // Start reload animation state
-    this.animationState.reloading = true;
-    this.animationState.idle = false;
-    
-    // Initialize reload animation system
-    this.reloadAnimationSystem.active = true;
-    this.reloadAnimationSystem.startTime = Date.now();
-    this.reloadAnimationSystem.progress = 0;
-    this.reloadAnimationSystem.phase = 0;
-    
-    // Trigger UI reload animations
-    if (this.game && this.game.uiManager) {
-      this.game.uiManager.showReloadIndicator();
-      this.game.uiManager.animateReloading();
+    // Play initial reload sound
+    if (this.game && this.game.soundManager) {
+      this.game.soundManager.playSfx('pistol_reload_start', { 
+        category: 'weapon'
+      });
     }
     
-    // After reload time, restore ammo from reserve
-    setTimeout(() => {
-      const ammoNeeded = this.ammoCapacity - this.currentAmmo;
-      const ammoAvailable = Math.min(ammoNeeded, this.reserveAmmo);
-      
-      this.reserveAmmo -= ammoAvailable;
-      this.currentAmmo += ammoAvailable;
-      
-      this.isReloading = false;
-      
-      // End reload animation state
-      this.animationState.reloading = false;
-      this.animationState.idle = true;
-      this.reloadAnimationSystem.active = false;
-      
-      // Update UI
-      if (this.game && this.game.uiManager) {
-        this.game.uiManager.updateAmmo(this.currentAmmo, this.ammoCapacity, this.reserveAmmo);
-        this.game.uiManager.hideReloadIndicator();
-      }
-    }, this.reloadTime * 1000);
+    // Update UI
+    if (this.game && this.game.uiManager) {
+      this.game.uiManager.showReloadIndicator(true);
+    }
+    
+    return true;
   }
   
   /**
@@ -612,8 +617,8 @@ export class Weapon {
     
     // Clean up any active hit markers
     this.hitMarkers.forEach(marker => {
-      if (marker.parent) {
-        marker.parent.remove(marker);
+      if (marker.object.parent) {
+        marker.object.parent.remove(marker.object);
       }
     });
     this.hitMarkers = [];
@@ -708,11 +713,20 @@ export class Weapon {
    * @param {number} progress - Progress through this phase (0-1)
    */
   updateReloadPhaseEject(progress) {
-    // Generic implementation - no specific animation in base class
-    // Keep weapon tilted
-    if (this.mesh) {
-      this.mesh.rotation.x = 0.3;
-      this.mesh.position.y = -0.4;
+    // Play eject sound at start of phase
+    if (progress < 0.1 && this.game && this.game.soundManager) {
+      this.game.soundManager.playSfx('pistol_reload_eject', { 
+        category: 'weapon'
+      });
+    }
+    
+    // Implementation of eject animation
+    const maxEjectDistance = 0.05;
+    this.magazineMesh.position.y = -Math.sin(progress * Math.PI) * maxEjectDistance;
+    
+    // Eject the magazine at end of phase
+    if (progress > 0.9) {
+      this.magazineMesh.visible = false;
     }
   }
   
@@ -721,12 +735,20 @@ export class Weapon {
    * @param {number} progress - Progress through this phase (0-1)
    */
   updateReloadPhaseInsert(progress) {
-    // Generic implementation - no specific animation in base class
-    // Small weapon movement to simulate handling
-    if (this.mesh) {
-      const wobble = Math.sin(progress * Math.PI * 2) * 0.02;
-      this.mesh.position.y = -0.4 + wobble;
+    // Show new magazine
+    this.magazineMesh.visible = true;
+    
+    // Play insert sound at start of phase
+    if (progress < 0.1 && this.game && this.game.soundManager) {
+      this.game.soundManager.playSfx('pistol_reload_insert', { 
+        category: 'weapon'
+      });
     }
+    
+    // Implementation of magazine insertion animation
+    const startY = 0.1;
+    const endY = 0;
+    this.magazineMesh.position.y = startY - (progress * (startY - endY));
   }
   
   /**
@@ -734,10 +756,22 @@ export class Weapon {
    * @param {number} progress - Progress through this phase (0-1)
    */
   updateReloadPhaseChamber(progress) {
-    // Generic implementation - return to original position
-    if (this.mesh) {
-      this.mesh.rotation.x = 0.3 * (1 - progress);
-      this.mesh.position.y = -0.4 + progress * 0.1;
+    // Play finish sound at start of phase
+    if (progress < 0.1 && this.game && this.game.soundManager) {
+      this.game.soundManager.playSfx('pistol_reload_finish', { 
+        category: 'weapon'
+      });
+    }
+    
+    // Slide animation
+    const slideDistance = 0.03;
+    
+    if (progress < 0.5) {
+      // Pull slide back
+      this.slideMesh.position.z = -(progress * 2) * slideDistance;
+    } else {
+      // Release slide
+      this.slideMesh.position.z = -slideDistance + ((progress - 0.5) * 2) * slideDistance;
     }
   }
   
@@ -745,10 +779,32 @@ export class Weapon {
    * Called when reload animation is finished
    */
   finishReloadAnimation() {
-    // Reset weapon position if needed
-    if (this.mesh) {
-      this.mesh.rotation.x = 0;
-      this.mesh.position.y = -0.3;
+    // Calculate how much ammo to reload
+    const ammoNeeded = this.maxAmmo - this.currentAmmo;
+    const ammoToReload = Math.min(this.reserveAmmo, ammoNeeded);
+    
+    // Consume reserve ammo
+    this.reserveAmmo -= ammoToReload;
+    
+    // Add ammo to weapon
+    this.currentAmmo += ammoToReload;
+    
+    // Reset reload state
+    this.isReloading = false;
+    this.reloadPhase = null;
+    this.reloadStartTime = 0;
+    
+    // Reset meshes
+    if (this.slideMesh) this.slideMesh.position.z = 0;
+    if (this.magazineMesh) {
+      this.magazineMesh.position.y = 0;
+      this.magazineMesh.visible = true;
+    }
+    
+    // Update UI
+    if (this.game && this.game.uiManager) {
+      this.game.uiManager.showReloadIndicator(false);
+      this.game.uiManager.updateAmmo(this.currentAmmo, this.reserveAmmo);
     }
   }
 

@@ -189,14 +189,13 @@ export class GameStateManager {
    * Game over state callbacks
    */
   enterGameOverState() {
-    // Stop the game
-    this.game.gameOver = true;
-    this.game.running = false;
-    
-    // Show game over screen with score
-    if (this.game.uiManager) {
-      this.game.uiManager.showGameOver(this.game.gameState.score);
+    // Show game over UI with final score
+    if (this.game.uiManager && this.game.scoreManager) {
+      this.game.uiManager.showGameOver(this.game.scoreManager.currentScore);
     }
+    
+    // Stop all game systems
+    this.game.running = false;
     
     // Release pointer lock
     document.exitPointerLock();
@@ -216,13 +215,23 @@ export class GameStateManager {
    * Victory state callbacks
    */
   enterVictoryState() {
-    // Stop the game
-    this.game.running = false;
-    
-    // Show victory screen
-    if (this.game.uiManager && this.game.zombieManager) {
-      this.game.uiManager.showGameComplete(this.game.zombieManager.waveProgression.waveStats);
+    // Show victory screen with game statistics
+    if (this.game.uiManager && this.game.scoreManager) {
+      // Get all wave stats from zombie manager
+      const waveStats = this.game.zombieManager?.waveProgression.waveStats || {};
+      
+      // Add score statistics
+      const scoreStats = this.game.scoreManager.getStats();
+      
+      // Show game completion screen with combined stats
+      this.game.uiManager.showGameComplete({
+        ...scoreStats,
+        waves: waveStats
+      });
     }
+    
+    // Stop all game systems
+    this.game.running = false;
     
     // Release pointer lock
     document.exitPointerLock();
