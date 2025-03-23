@@ -184,8 +184,8 @@
         {
           "id": "hit-indicators",
           "title": "Add hit indicators and damage feedback",
-          "status": "todo",
-          "notes": ""
+          "status": "done",
+          "notes": "Implemented a comprehensive damage feedback system with multiple visual elements including screen flash effects, vignette darkening, directional indicators showing damage sources, and screen shake effects proportional to damage amount. The system provides intuitive visual cues that enhance gameplay feedback and player awareness."
         },
         {
           "id": "game-state",
@@ -297,6 +297,7 @@
     "Regular testing on various hardware configurations"
   ],
   "notes": [
+    "Implemented a comprehensive damage feedback system with multiple visual elements including screen flash effects, vignette darkening, directional indicators showing damage sources, and screen shake effects proportional to damage amount. The system provides intuitive visual cues that enhance gameplay feedback and player awareness.",
     "Implemented a comprehensive wave progression system with increasing difficulty, special boss waves, dynamic wave modifiers, zombie type distribution, and difficulty settings. Added explosive zombies, regenerating zombies, and other special effects for varied gameplay.",
     "Implemented a comprehensive wave-based zombie spawn system with progressive difficulty, visual feedback with wave announcements and spawn effects, and optimized wave transitions for better gameplay pacing.",
     "Implemented a comprehensive zombie AI pathfinding system with NavigationGrid for city mapping, type-specific behaviors for zombies, flanking for runners, obstacle breaking for brutes, advanced collision handling, debug visualization, and performance optimizations.",

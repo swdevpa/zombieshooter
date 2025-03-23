@@ -367,6 +367,112 @@
       animation: flash-fade 0.5s forwards;
       pointer-events: none;
     }
+    
+    /* Damage Indicator Styles */
+    #damage-indicator-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 100;
+      overflow: hidden;
+    }
+    
+    #damage-vignette {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      box-shadow: inset 0 0 150px rgba(255, 0, 0, 0);
+      transition: box-shadow 0.5s ease;
+      pointer-events: none;
+    }
+    
+    #damage-vignette.active {
+      box-shadow: inset 0 0 150px rgba(255, 0, 0, 0.7);
+      animation: damage-pulse 1s ease-out;
+    }
+    
+    .damage-flash {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(255, 0, 0, 0.3);
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    .damage-flash.active {
+      animation: damage-flash 0.3s ease-out;
+    }
+    
+    .damage-direction-indicator {
+      position: absolute;
+      width: 100px;
+      height: 100px;
+      background-color: rgba(255, 0, 0, 0.3);
+      pointer-events: none;
+      transform-origin: center center;
+      clip-path: polygon(0% 35%, 50% 0%, 100% 35%, 50% 100%);
+      opacity: 0;
+    }
+    
+    .damage-direction-indicator.active {
+      animation: damage-direction-fade 1s ease-out;
+    }
+    
+    @keyframes damage-flash {
+      0% { opacity: 0.8; }
+      100% { opacity: 0; }
+    }
+    
+    @keyframes damage-pulse {
+      0% { box-shadow: inset 0 0 150px rgba(255, 0, 0, 0.7); }
+      100% { box-shadow: inset 0 0 150px rgba(255, 0, 0, 0); }
+    }
+    
+    @keyframes damage-direction-fade {
+      0% { opacity: 0.9; transform: scale(1); }
+      100% { opacity: 0; transform: scale(1.2); }
+    }
+    
+    #hit-marker-container {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 200;
+    }
+    
+    #hit-marker {
+      position: relative;
+      width: 20px;
+      height: 20px;
+      opacity: 0;
+      transition: opacity 0.2s ease-out;
+    }
+    
+    #critical-hit-marker {
+      position: relative;
+      width: 24px;
+      height: 24px;
+      opacity: 0;
+      transition: opacity 0.2s ease-out;
+    }
+    
+    #kill-marker {
+      position: relative;
+      width: 30px;
+      height: 30px;
+      opacity: 0;
+      transition: opacity 0.2s ease-out;
+    }
   </style>
 </head>
 <body>
@@ -394,6 +500,13 @@
     <div id="score">Score: 0</div>
     <div id="wave">Wave: 1</div>
   </div>
+  
+  <!-- Damage indicator elements -->
+  <div id="damage-indicator-container">
+    <div id="damage-vignette"></div>
+    <div class="damage-flash"></div>
+  </div>
+  
   <div id="health-container">
     <div id="health-bar"></div>
     <div id="health-text">100</div>

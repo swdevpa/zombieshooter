@@ -425,14 +425,33 @@ export class Player {
     return isOutOfBounds;
   }
 
-  takeDamage(amount) {
+  takeDamage(amount, damageInfo = {}) {
     if (!this.isAlive) return;
 
+    // Store previous health for damage intensity calculation
+    const prevHealth = this.health;
+    
+    // Apply damage
     this.health -= amount;
 
-    // Update UI
+    // Calculate damage intensity based on amount relative to max health
+    const damageIntensity = Math.min(1, amount / (this.maxHealth * 0.5));
+    
+    // Get damage direction if source position is provided
+    let damageAngle = null;
+    
+    if (damageInfo.sourcePosition) {
+      // Calculate angle between player and damage source
+      damageAngle = this.calculateDamageAngle(damageInfo.sourcePosition);
+    }
+
+    // Update UI with health and damage feedback
     if (this.game.uiManager) {
+      // Update health display
       this.game.uiManager.updateHealth(this.health);
+      
+      // Show damage indicators
+      this.game.uiManager.showDamageFeedback(damageIntensity, damageAngle);
     }
 
     // Check if player died
@@ -440,6 +459,34 @@ export class Player {
       this.health = 0;
       this.die();
     }
+  }
+  
+  /**
+   * Calculate angle between player and damage source
+   * @param {THREE.Vector3} sourcePosition - Position of damage source
+   * @returns {number} Angle in degrees
+   */
+  calculateDamageAngle(sourcePosition) {
+    // Get player's forward direction
+    const playerForward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.container.quaternion);
+    playerForward.y = 0;
+    playerForward.normalize();
+    
+    // Get vector from player to damage source
+    const toSource = new THREE.Vector3().subVectors(sourcePosition, this.container.position);
+    toSource.y = 0;
+    toSource.normalize();
+    
+    // Calculate angle
+    let angle = Math.atan2(toSource.x, toSource.z) - Math.atan2(playerForward.x, playerForward.z);
+    
+    // Convert to degrees
+    angle = angle * (180 / Math.PI);
+    
+    // Normalize to 0-360
+    angle = ((angle % 360) + 360) % 360;
+    
+    return angle;
   }
 
   die() {

@@ -269,22 +269,80 @@ export class UiManager {
     }
   }
 
-  // Hit indicator methods
+  /**
+   * Show hit marker when player hits an enemy
+   */
   showHitMarker() {
     if (this.ui) {
       this.ui.showHitMarker();
     }
   }
-  
+
+  /**
+   * Show critical hit marker for critical hits
+   */
   showCriticalHitMarker() {
     if (this.ui) {
       this.ui.showCriticalHitMarker();
     }
   }
-  
+
+  /**
+   * Show kill marker when player kills an enemy
+   */
   showKillMarker() {
     if (this.ui) {
       this.ui.showKillMarker();
+    }
+  }
+  
+  /**
+   * Show damage feedback when player takes damage
+   * @param {number} intensity - Damage intensity (0-1)
+   * @param {number} angle - Direction angle in degrees (optional)
+   */
+  showDamageFeedback(intensity = 1, angle = null) {
+    if (this.ui) {
+      this.ui.showDamageFeedback(intensity, angle);
+    }
+  }
+  
+  /**
+   * Show damage flash effect
+   */
+  showDamageFlash() {
+    if (this.ui) {
+      this.ui.showDamageFlash();
+    }
+  }
+  
+  /**
+   * Show damage vignette effect
+   * @param {number} intensity - Intensity of the effect (0-1)
+   */
+  showDamageVignette(intensity = 1) {
+    if (this.ui) {
+      this.ui.showDamageVignette(intensity);
+    }
+  }
+  
+  /**
+   * Show damage direction indicator
+   * @param {number} angle - Direction angle in degrees
+   */
+  showDamageDirectionIndicator(angle) {
+    if (this.ui) {
+      this.ui.showDamageDirectionIndicator(angle);
+    }
+  }
+  
+  /**
+   * Add screen shake effect
+   * @param {number} intensity - Shake intensity (0-10)
+   */
+  addScreenShake(intensity = 5) {
+    if (this.ui) {
+      this.ui.addScreenShake(intensity);
     }
   }
 }

@@ -1052,14 +1052,18 @@ export class UI {
    */
   createHitMarkerElements() {
     // Create container for hit markers
-    this.hitMarkerContainer = document.createElement('div');
-    this.hitMarkerContainer.id = 'hit-marker-container';
-    this.hitMarkerContainer.style.position = 'absolute';
-    this.hitMarkerContainer.style.top = '50%';
-    this.hitMarkerContainer.style.left = '50%';
-    this.hitMarkerContainer.style.transform = 'translate(-50%, -50%)';
-    this.hitMarkerContainer.style.pointerEvents = 'none';
-    document.body.appendChild(this.hitMarkerContainer);
+    this.hitMarkerContainer = document.getElementById('hit-marker-container');
+    if (!this.hitMarkerContainer) {
+      this.hitMarkerContainer = document.createElement('div');
+      this.hitMarkerContainer.id = 'hit-marker-container';
+      this.hitMarkerContainer.style.position = 'absolute';
+      this.hitMarkerContainer.style.top = '50%';
+      this.hitMarkerContainer.style.left = '50%';
+      this.hitMarkerContainer.style.transform = 'translate(-50%, -50%)';
+      this.hitMarkerContainer.style.pointerEvents = 'none';
+      this.hitMarkerContainer.style.zIndex = '200';
+      document.body.appendChild(this.hitMarkerContainer);
+    }
     
     // Create hit marker
     this.hitMarker = document.createElement('div');
@@ -1162,6 +1166,228 @@ export class UI {
     this.killMarker.appendChild(createKillMarkerLine(135));
     
     this.hitMarkerContainer.appendChild(this.killMarker);
+    
+    // Initialize damage indicator elements
+    this.initDamageIndicators();
+  }
+
+  /**
+   * Initialize damage indicator elements
+   */
+  initDamageIndicators() {
+    // Get existing damage indicator elements
+    this.damageIndicatorContainer = document.getElementById('damage-indicator-container');
+    this.damageVignette = document.getElementById('damage-vignette');
+    this.damageFlash = document.querySelector('.damage-flash');
+    
+    // Create if they don't exist
+    if (!this.damageIndicatorContainer) {
+      this.damageIndicatorContainer = document.createElement('div');
+      this.damageIndicatorContainer.id = 'damage-indicator-container';
+      this.damageIndicatorContainer.style.position = 'absolute';
+      this.damageIndicatorContainer.style.top = '0';
+      this.damageIndicatorContainer.style.left = '0';
+      this.damageIndicatorContainer.style.width = '100%';
+      this.damageIndicatorContainer.style.height = '100%';
+      this.damageIndicatorContainer.style.pointerEvents = 'none';
+      this.damageIndicatorContainer.style.zIndex = '100';
+      this.damageIndicatorContainer.style.overflow = 'hidden';
+      document.body.appendChild(this.damageIndicatorContainer);
+      
+      this.damageVignette = document.createElement('div');
+      this.damageVignette.id = 'damage-vignette';
+      this.damageVignette.style.position = 'absolute';
+      this.damageVignette.style.top = '0';
+      this.damageVignette.style.left = '0';
+      this.damageVignette.style.width = '100%';
+      this.damageVignette.style.height = '100%';
+      this.damageVignette.style.boxShadow = 'inset 0 0 150px rgba(255, 0, 0, 0)';
+      this.damageVignette.style.transition = 'box-shadow 0.5s ease';
+      this.damageVignette.style.pointerEvents = 'none';
+      this.damageIndicatorContainer.appendChild(this.damageVignette);
+      
+      this.damageFlash = document.createElement('div');
+      this.damageFlash.className = 'damage-flash';
+      this.damageFlash.style.position = 'absolute';
+      this.damageFlash.style.top = '0';
+      this.damageFlash.style.left = '0';
+      this.damageFlash.style.width = '100%';
+      this.damageFlash.style.height = '100%';
+      this.damageFlash.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
+      this.damageFlash.style.opacity = '0';
+      this.damageFlash.style.pointerEvents = 'none';
+      this.damageIndicatorContainer.appendChild(this.damageFlash);
+    }
+    
+    // Store active damage direction indicators
+    this.activeDamageIndicators = [];
+  }
+
+  /**
+   * Show damage flash overlay
+   */
+  showDamageFlash() {
+    if (!this.damageFlash) return;
+    
+    // Remove existing active class
+    this.damageFlash.classList.remove('active');
+    
+    // Force reflow
+    void this.damageFlash.offsetWidth;
+    
+    // Add active class to trigger animation
+    this.damageFlash.classList.add('active');
+  }
+  
+  /**
+   * Show damage vignette effect
+   * @param {number} intensity - Intensity of the effect (0-1)
+   */
+  showDamageVignette(intensity = 1) {
+    if (!this.damageVignette) return;
+    
+    // Ensure intensity is within range
+    intensity = Math.max(0, Math.min(1, intensity));
+    
+    // Add active class to trigger animation
+    this.damageVignette.classList.add('active');
+    
+    // Clear existing timeout
+    if (this.damageVignetteTimeout) {
+      clearTimeout(this.damageVignetteTimeout);
+    }
+    
+    // Hide vignette after animation
+    this.damageVignetteTimeout = setTimeout(() => {
+      this.damageVignette.classList.remove('active');
+    }, 1000);
+  }
+  
+  /**
+   * Show damage direction indicator
+   * @param {number} angle - Direction angle in degrees (0 is front, 90 is right, 180 is back, 270 is left)
+   */
+  showDamageDirectionIndicator(angle) {
+    if (!this.damageIndicatorContainer) return;
+    
+    // Create indicator element
+    const indicator = document.createElement('div');
+    indicator.className = 'damage-direction-indicator';
+    
+    // Calculate position based on angle (place around the edge of the screen)
+    const radius = Math.min(window.innerWidth, window.innerHeight) * 0.4;
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+    
+    // Convert angle to radians
+    const angleRad = angle * (Math.PI / 180);
+    
+    // Calculate position
+    const x = centerX + radius * Math.sin(angleRad) - 50; // Adjust for element size
+    const y = centerY - radius * Math.cos(angleRad) - 50; // Adjust for element size
+    
+    // Set styles
+    indicator.style.position = 'absolute';
+    indicator.style.top = `${y}px`;
+    indicator.style.left = `${x}px`;
+    indicator.style.transform = `rotate(${angle}deg)`;
+    
+    // Add to container
+    this.damageIndicatorContainer.appendChild(indicator);
+    
+    // Add active class to trigger animation
+    setTimeout(() => {
+      indicator.classList.add('active');
+    }, 10);
+    
+    // Store indicator for cleanup
+    this.activeDamageIndicators.push(indicator);
+    
+    // Remove after animation completes
+    setTimeout(() => {
+      if (indicator.parentNode) {
+        indicator.parentNode.removeChild(indicator);
+      }
+      
+      // Remove from active indicators
+      const index = this.activeDamageIndicators.indexOf(indicator);
+      if (index !== -1) {
+        this.activeDamageIndicators.splice(index, 1);
+      }
+    }, 1000);
+  }
+  
+  /**
+   * Show full damage feedback (flash, vignette, and direction)
+   * @param {number} intensity - Damage intensity (0-1)
+   * @param {number} angle - Direction angle in degrees
+   */
+  showDamageFeedback(intensity = 1, angle = null) {
+    // Show damage flash
+    this.showDamageFlash();
+    
+    // Show damage vignette with intensity
+    this.showDamageVignette(intensity);
+    
+    // Show direction indicator if angle is provided
+    if (angle !== null) {
+      this.showDamageDirectionIndicator(angle);
+    }
+    
+    // Add screen shake effect
+    this.addScreenShake(intensity * 5);
+  }
+  
+  /**
+   * Add screen shake effect
+   * @param {number} intensity - Shake intensity (0-10)
+   */
+  addScreenShake(intensity = 5) {
+    if (!this.game || !this.game.camera) return;
+    
+    // Store original camera position
+    if (!this.originalCameraPosition) {
+      this.originalCameraPosition = this.game.camera.position.clone();
+    }
+    
+    // Clear any existing shake
+    if (this.screenShakeInterval) {
+      clearInterval(this.screenShakeInterval);
+      this.screenShakeInterval = null;
+    }
+    
+    // Maximum shake amount based on intensity
+    const maxShake = Math.min(0.05, intensity * 0.01);
+    let shakeTime = 0;
+    const shakeDuration = 500; // milliseconds
+    const startTime = Date.now();
+    
+    // Create shake interval
+    this.screenShakeInterval = setInterval(() => {
+      // Calculate elapsed time
+      const elapsed = Date.now() - startTime;
+      
+      // Stop shaking after duration
+      if (elapsed >= shakeDuration) {
+        clearInterval(this.screenShakeInterval);
+        this.screenShakeInterval = null;
+        
+        // Reset camera position
+        if (this.game.camera && this.originalCameraPosition) {
+          this.game.camera.position.copy(this.originalCameraPosition);
+        }
+        return;
+      }
+      
+      // Calculate shake amount (reducing over time)
+      const shakeAmount = maxShake * (1 - elapsed / shakeDuration);
+      
+      // Apply random offset to camera
+      if (this.game.camera) {
+        this.game.camera.position.x = this.originalCameraPosition.x + (Math.random() * 2 - 1) * shakeAmount;
+        this.game.camera.position.y = this.originalCameraPosition.y + (Math.random() * 2 - 1) * shakeAmount;
+      }
+    }, 16); // ~60fps
   }
 
   /**

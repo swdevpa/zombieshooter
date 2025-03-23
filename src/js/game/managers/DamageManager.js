@@ -568,8 +568,12 @@ export class DamageManager {
         const damageMultiplier = 1 - (distanceToPlayer / radius);
         const playerDamage = Math.round(damage * damageMultiplier);
         
-        // Apply damage to player
-        this.game.player.takeDamage(playerDamage);
+        // Apply damage to player with source position
+        this.game.player.takeDamage(playerDamage, {
+          sourcePosition: position.clone(),
+          damageType: 'explosion',
+          damageSource: source
+        });
       }
     }
     
