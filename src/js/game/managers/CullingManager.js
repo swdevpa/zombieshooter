@@ -566,6 +566,13 @@ export class CullingManager {
   }
 
   performDetailCulling() {
+    // Delegate detail culling to the LODManager if available
+    if (this.game.lodManager && this.game.lodManager.config.enabled) {
+      // LODManager now handles detail level management
+      return;
+    }
+    
+    // Legacy detail culling implementation (fallback)
     // Level of Detail basierend auf Entfernung
     const playerPosition = this.game.player.container.position;
 
@@ -593,20 +600,18 @@ export class CullingManager {
       this.visibleTiles.forEach((tileKey) => {
         const [x, y] = tileKey.split(',').map(Number);
         const tile = this.game.map.tiles[y][x];
-
-        if (tile && tile.container.visible) {
-          const tilePos = new THREE.Vector3();
-          tile.container.getWorldPosition(tilePos);
-          const distance = tilePos.distanceTo(playerPosition);
-
-          // Skaliere Detail basierend auf Entfernung
-          if (distance > 25) {
-            tile.setDetailLevel(0);
-          } else if (distance > 15) {
-            tile.setDetailLevel(1);
-          } else {
-            tile.setDetailLevel(2);
-          }
+        
+        if (!tile) return;
+        
+        const distance = new THREE.Vector3(x * 10 + 5, 0, y * 10 + 5)
+          .distanceTo(playerPosition);
+          
+        if (distance > 50) {
+          tile.setDetailLevel(0);
+        } else if (distance > 25) {
+          tile.setDetailLevel(1);
+        } else {
+          tile.setDetailLevel(2);
         }
       });
     }

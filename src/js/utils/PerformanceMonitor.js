@@ -25,6 +25,12 @@ export class PerformanceMonitor {
         used: 0,
         limit: 0,
       },
+      assets: {
+        textures: 0,
+        geometries: 0,
+        materials: 0,
+        total: 0
+      },
       drawCalls: 0,
       triangles: 0,
       textures: 0,
@@ -74,8 +80,11 @@ export class PerformanceMonitor {
       <div>Draw Calls: <span id="draw-calls">0</span></div>
       <div>Triangles: <span id="triangles">0</span></div>
       <div>Memory: <span id="memory-used">0</span>MB / <span id="memory-total">0</span>MB</div>
+      <div>Asset Memory: <span id="asset-memory">0</span>MB (<span id="texture-memory">0</span>MB textures)</div>
+      <div>Shared Materials: <span id="shared-materials">0</span></div>
       <div>
         <button id="toggle-overlay" style="background: #333; color: white; border: 1px solid #555; padding: 2px 5px; margin-top: 5px; cursor: pointer;">Hide</button>
+        <button id="optimize-memory" style="background: #333; color: white; border: 1px solid #555; padding: 2px 5px; margin-top: 5px; cursor: pointer;">Optimize</button>
       </div>
     `;
 
@@ -87,6 +96,17 @@ export class PerformanceMonitor {
     if (toggleButton) {
       toggleButton.addEventListener('click', () => {
         this.toggleOverlay();
+      });
+    }
+    
+    // Add event listener to optimize button
+    const optimizeButton = document.getElementById('optimize-memory');
+    if (optimizeButton) {
+      optimizeButton.addEventListener('click', () => {
+        if (this.game && this.game.assetManager) {
+          console.log('Manual memory optimization triggered');
+          this.game.assetManager.performMemoryOptimization();
+        }
       });
     }
 
@@ -117,6 +137,9 @@ export class PerformanceMonitor {
 
     // Calculate FPS and frame time
     this.calculateMetrics(deltaTime, now);
+    
+    // Get asset memory usage from AssetManager
+    this.updateAssetMemoryMetrics();
 
     // Update overlay if it's time
     if (now - this.lastUpdateTime > this.config.updateInterval) {
@@ -189,6 +212,23 @@ export class PerformanceMonitor {
     }
   }
 
+  updateAssetMemoryMetrics() {
+    if (this.game && this.game.assetManager) {
+      const assetManager = this.game.assetManager;
+      
+      // Copy memory usage data
+      this.metrics.assets.textures = assetManager.memoryUsage.textures;
+      this.metrics.assets.geometries = assetManager.memoryUsage.geometries;
+      this.metrics.assets.materials = assetManager.memoryUsage.materials;
+      this.metrics.assets.total = assetManager.memoryUsage.total;
+      
+      // Track shared material count
+      if (this.game.texturingSystem) {
+        this.metrics.assets.sharedMaterials = this.game.texturingSystem.sharedMaterialCount || 0;
+      }
+    }
+  }
+
   updateOverlay() {
     if (!this.config.overlayEnabled) return;
 
@@ -230,6 +270,15 @@ export class PerformanceMonitor {
 
     if (memoryUsedEl) memoryUsedEl.textContent = this.metrics.memory.used;
     if (memoryTotalEl) memoryTotalEl.textContent = this.metrics.memory.total;
+    
+    // Update asset memory stats
+    const assetMemoryEl = document.getElementById('asset-memory');
+    const textureMemoryEl = document.getElementById('texture-memory');
+    const sharedMaterialsEl = document.getElementById('shared-materials');
+    
+    if (assetMemoryEl) assetMemoryEl.textContent = this.metrics.assets.total;
+    if (textureMemoryEl) textureMemoryEl.textContent = this.metrics.assets.textures;
+    if (sharedMaterialsEl) sharedMaterialsEl.textContent = this.metrics.assets.sharedMaterials || 0;
   }
 
   logMetrics() {
@@ -241,6 +290,7 @@ Frame Time: ${this.metrics.frameTime.current}ms (min: ${this.metrics.frameTime.m
 Draw Calls: ${this.metrics.drawCalls}
 Triangles: ${this.metrics.triangles}
 Memory: ${this.metrics.memory.used}MB / ${this.metrics.memory.total}MB
+Asset Memory: ${this.metrics.assets.total}MB (textures: ${this.metrics.assets.textures}MB)
     `);
   }
 

@@ -7,8 +7,10 @@ import { City } from './world/City.js';
 import { PixelFilter } from '../utils/PixelFilter.js';
 import { UI } from './ui/UI.js';
 import { CullingManager } from './managers/CullingManager.js';
+import { LODManager } from './managers/LODManager.js';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 import { AssetLoader } from '../utils/AssetLoader.js';
+import { AssetManager } from '../utils/AssetManager.js';
 import { UiManager } from './managers/UiManager.js';
 import { LevelManager } from './managers/LevelManager.js';
 import { PerformanceMonitor } from '../utils/PerformanceMonitor.js';
@@ -33,6 +35,9 @@ export class Game {
     
     // Save the asset loader from parameter
     this.assetLoader = assetLoader || new AssetLoader();
+    
+    // Create asset manager for advanced asset handling
+    this.assetManager = new AssetManager(this.assetLoader, this);
 
     // Initialize clock for delta time calculation
     this.clock = new THREE.Clock();
@@ -189,6 +194,10 @@ export class Game {
     // Initialize culling manager
     this.cullingManager = new CullingManager(this);
     this.cullingManager.init();
+    
+    // Initialize LOD manager
+    this.lodManager = new LODManager(this);
+    this.lodManager.init();
 
     // Initialize zombie manager
     this.zombieManager = new ZombieManager(this);
@@ -262,6 +271,13 @@ export class Game {
             this.pause();
             this.uiManager.showSettingsMenu();
           }
+        }
+      }
+
+      // Alt+L to toggle LOD debug visualization
+      if (event.key === 'l' && event.altKey) {
+        if (this.lodManager) {
+          this.lodManager.toggleDebugVisualization();
         }
       }
     });
@@ -452,15 +468,18 @@ export class Game {
     if (this.initialized) return Promise.resolve();
 
     try {
-      // Load assets first
+      // Initialize asset manager first
+      await this.assetManager.init();
+      
+      // Load assets using the asset manager
       await this.assetLoader.loadAssets();
       console.log('Assets loaded successfully');
-
-      // Initialize scene manager
-      this.sceneManager = new SceneManager(this);
       
       // Initialize texturing system
       this.texturingSystem = new TexturingSystem(this, this.assetLoader);
+      
+      // Initialize scene manager
+      this.sceneManager = new SceneManager(this);
       
       // Create city manager
       this.cityManager = new CityManager(this, this.assetLoader);
@@ -468,6 +487,9 @@ export class Game {
       // Initialize sound manager
       this.soundManager = new SoundManager(this, this.assetLoader);
       this.soundManager.init();
+
+      // Preload city scene assets
+      await this.assetManager.preloadScene('city');
 
       // Create player
       this.player = new Player(this, this.assetLoader);
@@ -745,91 +767,126 @@ export class Game {
   }
 
   update(time) {
-    if (!this.running || this.paused) return;
+    // Nicht aktualisieren, wenn das Spiel pausiert oder beendet ist
+    if (this.paused || this.gameOver) return;
 
-    // Calculate delta time (capped to prevent large jumps)
+    // Delta-Zeit berechnen
     const rawDeltaTime = this.clock.getDelta();
-    const deltaTime = Math.min(0.1, rawDeltaTime); // Cap at 100ms to prevent huge jumps
 
-    // Update FPS counter
-    this.updateFPS(deltaTime);
-    
-    try {
-      // Update frustum for culling distant zombies
-      if (this.camera) {
-        this.updateFrustum();
+    // Framerate-Begrenzung anwenden
+    if (this.settings.limitFPS) {
+      // Minimale Zeit, die zwischen Frames vergehen sollte
+      const minDeltaTime = 1 / this.settings.targetFPS;
+      
+      // Warten, wenn wir zu schnell sind
+      if (rawDeltaTime < minDeltaTime) {
+        const waitTime = (minDeltaTime - rawDeltaTime) * 1000;
+        // Hier könnten wir einen setTimeout verwenden, aber das würde den Game-Loop unterbrechen
+        // Stattdessen stellen wir einfach fest, dass wir zu schnell sind
+        this.performanceMonitor.logFrameLimitDelay(waitTime);
+        return; // Skip diesen Frame
       }
-
-      // Update player if it exists
-      if (this.player) {
-        try {
-          this.player.update(deltaTime);
-        } catch (playerError) {
-          console.error('Error updating player:', playerError);
-        }
-      }
-
-      // Update game systems based on game state
-      if (this.gameState && this.gameState.status === 'playing') {
-        // Update city
-        if (this.cityManager) {
-          try {
-            this.cityManager.update(deltaTime);
-          } catch (cityError) {
-            console.error('Error updating city:', cityError);
-          }
-        }
-
-        // Update zombies
-        if (this.zombieManager) {
-          try {
-            this.zombieManager.update(deltaTime);
-          } catch (zombieError) {
-            console.error('Error updating zombies:', zombieError);
-          }
-        }
-
-        // Update weapons
-        if (this.weaponManager) {
-          try {
-            this.weaponManager.update(deltaTime);
-          } catch (weaponError) {
-            console.error('Error updating weapons:', weaponError);
-          }
-        }
-
-        // Update UI
-        if (this.uiManager) {
-          try {
-            this.uiManager.update(deltaTime);
-          } catch (uiError) {
-            console.error('Error updating UI:', uiError);
-          }
-        }
-
-        // Update sounds
-        if (this.soundManager) {
-          try {
-            this.soundManager.update(deltaTime);
-          } catch (soundError) {
-            console.error('Error updating sounds:', soundError);
-          }
-        }
-
-        // Update score system
-        if (this.scoreManager) {
-          this.scoreManager.update(deltaTime);
-        }
-      }
-
-      // Render scene
-      this.render();
-    } catch (error) {
-      console.error('Critical error in update loop:', error);
     }
 
-    // Schedule next frame (outside try-catch to ensure it always runs)
-    requestAnimationFrame(this.update.bind(this));
+    // Maximal erlaubte Delta-Zeit, um Probleme mit großen Lücken zu vermeiden (z.B. nach Tab-Wechsel)
+    const deltaTime = Math.min(rawDeltaTime, 0.1);
+    
+    // Zeit für die FPS-Berechnung aktualisieren
+    this.updateFPS(deltaTime);
+
+    // Performance-Monitoring starten
+    this.performanceMonitor.startFrame();
+
+    // Eingaben verarbeiten
+    this.performanceMonitor.startSection('input');
+    if (this.inputManager) {
+      this.inputManager.update(deltaTime);
+    }
+    this.performanceMonitor.endSection('input');
+
+    // Physik und Bewegung aktualisieren
+    this.performanceMonitor.startSection('physics');
+    if (this.player) {
+      this.player.update(deltaTime);
+    }
+    this.performanceMonitor.endSection('physics');
+
+    // Maus-Kamera-Bewegung aktualisieren
+    this.performanceMonitor.startSection('camera');
+    this.updateMouseLook(deltaTime);
+    this.updateCameraRecoil(deltaTime);
+    this.updateCameraHeadBob(deltaTime);
+    this.updateCamera();
+    this.performanceMonitor.endSection('camera');
+    
+    // LOD-System aktualisieren
+    this.performanceMonitor.startSection('lod');
+    if (this.lodManager) {
+      this.lodManager.update(deltaTime);
+    }
+    this.performanceMonitor.endSection('lod');
+
+    // Culling aktualisieren (nach LOD, um von aktuellen LOD-Leveln zu profitieren)
+    this.performanceMonitor.startSection('culling');
+    if (this.cullingManager) {
+      this.cullingManager.update(this.camera);
+    }
+    this.performanceMonitor.endSection('culling');
+    
+    // Entities aktualisieren
+    this.performanceMonitor.startSection('entities');
+    if (this.entityManager) {
+      this.entityManager.update(deltaTime);
+    }
+    this.performanceMonitor.endSection('entities');
+    
+    // Zombies aktualisieren
+    this.performanceMonitor.startSection('zombies');
+    if (this.zombieManager) {
+      this.zombieManager.update(deltaTime);
+    }
+    this.performanceMonitor.endSection('zombies');
+    
+    // Waffen aktualisieren
+    this.performanceMonitor.startSection('weapons');
+    if (this.weaponManager) {
+      this.weaponManager.update(deltaTime);
+    }
+    this.performanceMonitor.endSection('weapons');
+    
+    // UI aktualisieren
+    this.performanceMonitor.startSection('ui');
+    if (this.uiManager) {
+      this.uiManager.update(deltaTime);
+    }
+    this.performanceMonitor.endSection('ui');
+    
+    // Physik aktualisieren
+    this.performanceMonitor.startSection('physics');
+    if (this.physicsManager) {
+      this.physicsManager.update(deltaTime);
+    }
+    this.performanceMonitor.endSection('physics');
+    
+    // Nachladen
+    this.performanceMonitor.startSection('reload');
+    if (this.inputManager && this.inputManager.isReloadPressed() && this.weaponManager) {
+      this.weaponManager.reload();
+    }
+    this.performanceMonitor.endSection('reload');
+    
+    // Schiessen
+    this.performanceMonitor.startSection('shooting');
+    if (this.inputManager && this.inputManager.isShootPressed() && this.weaponManager) {
+      this.weaponManager.shoot();
+    }
+    this.performanceMonitor.endSection('shooting');
+    
+    // Leistungsüberwachung beenden
+    this.performanceMonitor.endFrame();
+    
+    // Nächsten Frame anfordern
+    requestAnimationFrame(this.animate.bind(this));
   }
 
   animate() {
@@ -1079,6 +1136,16 @@ export class Game {
     // Apply effect detail level
     if (this.atmosphericEffects) {
       this.atmosphericEffects.setEffectDetail(effectDetail);
+    }
+
+    // Apply quality settings to the asset manager
+    if (this.assetManager) {
+      this.assetManager.applyQualitySettings(this.settings.qualityLevel);
+    }
+
+    // Update LOD settings
+    if (this.lodManager) {
+      this.lodManager.applyQualitySettings(qualityLevel);
     }
 
     console.log(`Applied ${qualityLevel} quality settings`);

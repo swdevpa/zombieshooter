@@ -1,19 +1,35 @@
 import * as THREE from 'three';
 import { Game } from './game/Game.js';
 import { AssetLoader } from './utils/AssetLoader.js';
+import { AssetManager } from './utils/AssetManager.js';
 import { PixelFilter } from './utils/PixelFilter.js';
 
 // Global variables
 let game;
 const assetLoader = new AssetLoader();
+let assetManager;
 
 // Initialize the game when assets are loaded
 async function init() {
   try {
     console.log('Starting game initialization...');
 
-    // Load assets
+    // Create asset manager for optimized asset handling
+    assetManager = new AssetManager(assetLoader, null);
+    await assetManager.init();
+    console.log('Asset Manager initialized');
+
+    // Load assets with optimization
     await assetLoader.loadAssets();
+    
+    // Track asset loading completion
+    console.log('Assets loaded successfully');
+    
+    // Add asset memory tracking to console
+    if (assetManager) {
+      assetManager.updateMemoryUsage();
+      console.log(`Initial memory usage: ${assetManager.memoryUsage.total}MB (textures: ${assetManager.memoryUsage.textures}MB)`);
+    }
 
     // Hide loading screen
     document.getElementById('loading').style.display = 'none';
@@ -26,7 +42,7 @@ async function init() {
       container.id = 'game-container';
       document.body.appendChild(container);
       
-      // Initialize game with container
+      // Initialize game with container and asset management
       game = new Game(container, assetLoader);
     } else {
       // Initialize game with existing container
@@ -40,8 +56,20 @@ async function init() {
     });
 
     console.log('Game object created, initializing...');
-    game.init();
+    
+    // Initialize and start the game
+    await game.init();
     console.log('Game initialization complete, starting animation loop');
+
+    // Add keyboard shortcut to optimize memory (Shift+M)
+    window.addEventListener('keydown', function(e) {
+      if (e.key === 'M' && e.shiftKey) {
+        console.log('Manual memory optimization triggered');
+        if (game && game.assetManager) {
+          game.assetManager.performMemoryOptimization();
+        }
+      }
+    });
 
     // Start animation loop
     animate();
@@ -57,66 +85,18 @@ async function init() {
       }
     });
   } catch (error) {
-    console.error('Error initializing game:', error);
-    document.getElementById('loading').textContent =
-      `Error loading game: ${error.message}. Please refresh.`;
-    document.getElementById('loading').style.color = 'red';
+    console.error('Error during game initialization:', error);
+    alert('Failed to initialize game: ' + error.message);
   }
 }
 
 // Animation loop
 function animate() {
-  try {
-    // Schedule next frame
-    requestAnimationFrame(animate);
-
-    if (!game) {
-      console.warn('Game object not initialized yet');
-      return;
-    }
-
-    // Check if DOM is still accessible
-    if (!document.body) {
-      console.error('Document body not accessible');
-      return;
-    }
-
-    // Check if renderer is attached to DOM
-    if (game.renderer && game.renderer.domElement && !game.renderer.domElement.parentNode) {
-      console.error('Renderer not attached to DOM');
-      // Try reattaching
-      try {
-        document.body.appendChild(game.renderer.domElement);
-        console.log('Reattached renderer to DOM');
-      } catch (attachError) {
-        console.error('Failed to reattach renderer:', attachError);
-      }
-    }
-
-    // Only update if game exists
-    if (game) {
-      try {
-        game.update();
-      } catch (updateError) {
-        console.error('Detailed update error:', updateError, updateError.stack);
-      }
-
-      try {
-        game.render();
-      } catch (renderError) {
-        console.error('Detailed render error:', renderError, renderError.stack);
-      }
-    }
-  } catch (error) {
-    console.error('Critical error in animation loop:', error, error.stack);
-
-    // Try to recover by re-initializing if severe error
-    if (error instanceof TypeError && error.message.includes('undefined')) {
-      console.warn('Attempting to recover from undefined error...');
-      // No need to re-initialize the entire game, as it would likely recreate the error
-    }
+  requestAnimationFrame(animate);
+  if (game && game.running) {
+    game.update();
   }
 }
 
-// Start initializing the game
-init();
+// Initialize the game when the window loads
+window.addEventListener('load', init);

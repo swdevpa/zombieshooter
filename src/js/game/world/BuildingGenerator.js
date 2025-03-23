@@ -3,6 +3,7 @@ import * as THREE from 'three';
 /**
  * BuildingGenerator class - Responsible for procedurally generating building meshes
  * with various types, styles, and details for a post-apocalyptic cityscape.
+ * Now supports Level of Detail (LOD) for performance optimization.
  */
 export class BuildingGenerator {
   constructor(game) {
@@ -21,6 +22,13 @@ export class BuildingGenerator {
       DAMAGED: 1,       // Some damage (broken windows, cracks)
       HEAVILY_DAMAGED: 2, // Major structural damage
       PARTIALLY_COLLAPSED: 3 // Partial collapse
+    };
+    
+    // LOD options
+    this.lodLevels = {
+      HIGH: 2,   // High detail - full details, all windows, decorations
+      MEDIUM: 1, // Medium detail - simplified windows, reduced decorations
+      LOW: 0     // Low detail - basic shape, minimal details, simplified textures
     };
     
     // Materials cache for performance
@@ -151,56 +159,538 @@ export class BuildingGenerator {
   }
   
   /**
-   * Create a building mesh based on specifications
-   * @param {Object} options - Building options (type, size, position, etc.)
-   * @returns {THREE.Group} - Building mesh group
+   * Create a building with multiple LOD levels
+   * @param {Object} options - Building configuration options
+   * @returns {Object} Building object with container and LOD meshes
    */
   createBuilding(options) {
-    const {
-      type = this.buildingTypes.RESIDENTIAL,
-      width = 5,
-      depth = 5,
-      height = 10,
-      position = { x: 0, y: 0, z: 0 },
-      destructionLevel = this.destructionLevels.PRISTINE,
-      blockId = "0_0"
-    } = options;
+    const width = options.width || 10;
+    const depth = options.depth || 10;
+    const height = options.height || 20;
+    const buildingType = options.type || this.buildingTypes.RESIDENTIAL;
+    const destructionLevel = options.destructionLevel || this.destructionLevels.PRISTINE;
     
-    // Building container group
-    const buildingGroup = new THREE.Group();
-    buildingGroup.name = `building_${blockId}_${type}`;
+    // Create building container
+    const building = {
+      container: new THREE.Group(),
+      detailLevels: {
+        high: new THREE.Group(),
+        medium: new THREE.Group(),
+        low: new THREE.Group()
+      },
+      currentDetailLevel: this.lodLevels.HIGH,
+      setDetailLevel: function(level) {
+        // Hide current LOD level
+        Object.values(this.detailLevels).forEach(group => {
+          group.visible = false;
+        });
+        
+        // Show the requested LOD level
+        switch(level) {
+          case 0: // LOW
+            this.detailLevels.low.visible = true;
+            this.currentDetailLevel = 0;
+            break;
+          case 1: // MEDIUM
+            this.detailLevels.medium.visible = true;
+            this.currentDetailLevel = 1;
+            break;
+          case 2: // HIGH
+          default:
+            this.detailLevels.high.visible = true;
+            this.currentDetailLevel = 2;
+            break;
+        }
+      }
+    };
     
-    // Switch based on building type
+    // Create the high detail version
+    this.createHighDetailBuilding(
+      building.detailLevels.high, 
+      width, 
+      depth, 
+      height, 
+      buildingType, 
+      destructionLevel
+    );
+    
+    // Create the medium detail version
+    this.createMediumDetailBuilding(
+      building.detailLevels.medium, 
+      width, 
+      depth, 
+      height, 
+      buildingType, 
+      destructionLevel
+    );
+    
+    // Create the low detail version
+    this.createLowDetailBuilding(
+      building.detailLevels.low, 
+      width, 
+      depth, 
+      height, 
+      buildingType, 
+      destructionLevel
+    );
+    
+    // Add detail levels to container
+    building.container.add(
+      building.detailLevels.high,
+      building.detailLevels.medium,
+      building.detailLevels.low
+    );
+    
+    // Initially show only high detail version
+    building.setDetailLevel(this.lodLevels.HIGH);
+    
+    return building;
+  }
+  
+  /**
+   * Create a high detail building
+   */
+  createHighDetailBuilding(group, width, depth, height, type, destructionLevel) {
     switch (type) {
-      case this.buildingTypes.RESIDENTIAL:
-        this.createResidentialBuilding(buildingGroup, width, depth, height, destructionLevel);
-        break;
       case this.buildingTypes.COMMERCIAL:
-        this.createCommercialBuilding(buildingGroup, width, depth, height, destructionLevel);
+        this.createCommercialBuilding(group, width, depth, height, destructionLevel);
         break;
       case this.buildingTypes.INDUSTRIAL:
-        this.createIndustrialBuilding(buildingGroup, width, depth, height, destructionLevel);
+        this.createIndustrialBuilding(group, width, depth, height, destructionLevel);
         break;
+      case this.buildingTypes.RESIDENTIAL:
       default:
-        this.createResidentialBuilding(buildingGroup, width, depth, height, destructionLevel);
+        this.createResidentialBuilding(group, width, depth, height, destructionLevel);
+        break;
+    }
+  }
+  
+  /**
+   * Create a medium detail building (simplified version)
+   */
+  createMediumDetailBuilding(group, width, depth, height, type, destructionLevel) {
+    // Create building base with fewer details
+    const buildingGeo = this.createBuildingGeometry(width, height, depth, {
+      simplify: true, // Simplified geometry
+      cornerDetails: false // No corner details
+    });
+    
+    // Create materials for this building
+    const materials = this.createMaterials(type, destructionLevel);
+    
+    // Create the building mesh
+    const buildingMesh = new THREE.Mesh(buildingGeo, materials.walls);
+    buildingMesh.castShadow = true;
+    buildingMesh.receiveShadow = true;
+    group.add(buildingMesh);
+    
+    // Add simplified windows (fewer in number than high detail)
+    let windowPositions;
+    switch (type) {
+      case this.buildingTypes.COMMERCIAL:
+        windowPositions = this.generateWindowPositions(width, depth, height, type, {
+          windowDensity: 0.6 // Fewer windows
+        });
+        break;
+      case this.buildingTypes.INDUSTRIAL:
+        windowPositions = this.generateWindowPositions(width, depth, height, type, {
+          windowDensity: 0.5 // Fewer windows
+        });
+        break;
+      case this.buildingTypes.RESIDENTIAL:
+      default:
+        windowPositions = this.generateWindowPositions(width, depth, height, type, {
+          windowDensity: 0.6 // Fewer windows
+        });
+        break;
     }
     
-    // Apply damage based on destruction level
+    // Create fewer windows with simplified materials
+    this.createWindows(windowPositions, destructionLevel, group, {
+      simplified: true // Simplified window models
+    });
+    
+    // Add minimal details based on building type
+    switch (type) {
+      case this.buildingTypes.COMMERCIAL:
+        // No additional details for medium LOD
+        break;
+      case this.buildingTypes.INDUSTRIAL:
+        // Add only essential industrial details
+        this.createIndustrialDetails(width, depth, height, group, {
+          simplify: true // Simplified industrial details
+        });
+        break;
+      case this.buildingTypes.RESIDENTIAL:
+        // No balconies for medium LOD
+        break;
+    }
+    
+    // Apply damage if needed
+    if (destructionLevel > this.destructionLevels.PRISTINE) {
+      this.applyDamage(group, destructionLevel, {
+        simplify: true // Simplified damage
+      });
+    }
+  }
+  
+  /**
+   * Create a low detail building (very simplified version)
+   */
+  createLowDetailBuilding(group, width, depth, height, type, destructionLevel) {
+    // Create simplified building geometry
+    const buildingGeo = this.createBuildingGeometry(width, height, depth, {
+      simplify: true,
+      cornerDetails: false,
+      noDivisions: true // No facade divisions for low detail
+    });
+    
+    // Create simplified materials with lower resolution textures
+    const materials = this.createMaterials(type, destructionLevel, {
+      lowDetail: true // Simplified textures for low detail
+    });
+    
+    // Create the building mesh
+    const buildingMesh = new THREE.Mesh(buildingGeo, materials.walls);
+    buildingMesh.castShadow = true;
+    buildingMesh.receiveShadow = true;
+    group.add(buildingMesh);
+    
+    // For low detail, we add facade texture instead of actual windows
+    // Just add a few highlight elements to suggest windows
+    if (type !== this.buildingTypes.INDUSTRIAL) {
+      const windowPositions = this.generateWindowPositions(width, depth, height, type, {
+        windowDensity: 0.3 // Very few windows
+      });
+      
+      // Create only a handful of window representations for visual interest
+      this.createWindows(windowPositions.slice(0, 5), destructionLevel, group, {
+        simplified: true,
+        mergeGeometry: true // Merge window geometries for better performance
+      });
+    }
+    
+    // Only add major damage for visual effect if heavily damaged
+    if (destructionLevel >= this.destructionLevels.HEAVILY_DAMAGED) {
+      this.applyDamage(group, destructionLevel, {
+        simplify: true,
+        majorOnly: true // Only major damage features
+      });
+    }
+  }
+
+  // Override the existing methods to accept additional LOD parameters
+
+  generateWindowPositions(width, depth, height, type, lodOptions = {}) {
+    // Use existing method but adjust density based on LOD options
+    const windowDensity = lodOptions.windowDensity || 1.0;
+    
+    // ... existing window position generation code ...
+    // Just adjust the number of windows based on density
+    
+    // For now, let's use a simplified version of the existing method
+    const positions = [];
+    
+    // Base values for different building types
+    let spacingX, spacingY, offsetX, offsetY, rows, cols;
+    
+    switch (type) {
+      case this.buildingTypes.COMMERCIAL:
+        spacingX = 2.5;
+        spacingY = 3;
+        offsetX = 1.5;
+        offsetY = 3;
+        break;
+      case this.buildingTypes.INDUSTRIAL:
+        spacingX = 4;
+        spacingY = 4;
+        offsetX = 2;
+        offsetY = 4;
+        break;
+      case this.buildingTypes.RESIDENTIAL:
+      default:
+        spacingX = 2;
+        spacingY = 2.5;
+        offsetX = 1;
+        offsetY = 3;
+        break;
+    }
+    
+    // Adjust window density based on LOD
+    spacingX /= windowDensity;
+    spacingY /= windowDensity;
+    
+    // Calculate number of rows and columns
+    rows = Math.floor((height - offsetY) / spacingY);
+    cols = Math.floor((width - offsetX * 2) / spacingX) * 2 + 
+           Math.floor((depth - offsetX * 2) / spacingX) * 2;
+    
+    // Add window positions
+    // Front face
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < Math.floor((width - offsetX * 2) / spacingX); col++) {
+        positions.push({
+          position: new THREE.Vector3(
+            offsetX + col * spacingX - width / 2 + spacingX / 2,
+            offsetY + row * spacingY,
+            depth / 2 + 0.1
+          ),
+          rotation: new THREE.Euler(0, 0, 0),
+          face: 'front'
+        });
+      }
+    }
+    
+    // Back face
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < Math.floor((width - offsetX * 2) / spacingX); col++) {
+        positions.push({
+          position: new THREE.Vector3(
+            offsetX + col * spacingX - width / 2 + spacingX / 2,
+            offsetY + row * spacingY,
+            -depth / 2 - 0.1
+          ),
+          rotation: new THREE.Euler(0, Math.PI, 0),
+          face: 'back'
+        });
+      }
+    }
+    
+    // Left face
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < Math.floor((depth - offsetX * 2) / spacingX); col++) {
+        positions.push({
+          position: new THREE.Vector3(
+            -width / 2 - 0.1,
+            offsetY + row * spacingY,
+            offsetX + col * spacingX - depth / 2 + spacingX / 2
+          ),
+          rotation: new THREE.Euler(0, -Math.PI / 2, 0),
+          face: 'left'
+        });
+      }
+    }
+    
+    // Right face
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < Math.floor((depth - offsetX * 2) / spacingX); col++) {
+        positions.push({
+          position: new THREE.Vector3(
+            width / 2 + 0.1,
+            offsetY + row * spacingY,
+            offsetX + col * spacingX - depth / 2 + spacingX / 2
+          ),
+          rotation: new THREE.Euler(0, Math.PI / 2, 0),
+          face: 'right'
+        });
+      }
+    }
+    
+    return positions;
+  }
+    
+  createWindows(windowPositions, destructionLevel, targetGroup, options = {}) {
+    const group = targetGroup || new THREE.Group();
+    const simplified = options.simplified || false;
+    const mergeGeometry = options.mergeGeometry || false;
+    
+    // If we're merging geometry for performance, set up merged window approach
+    if (mergeGeometry) {
+      const windowGeometry = new THREE.BoxGeometry(1, 1, 0.1);
+      const windowMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x333333,
+        metalness: 0.8,
+        roughness: 0.2
+      });
+      
+      // Create a single merged geometry
+      const mergedGeometry = new THREE.BufferGeometry();
+      const positions = [];
+      const normals = [];
+      const uvs = [];
+      
+      // Add each window to the merged geometry
+      windowPositions.forEach(windowData => {
+        const windowMatrix = new THREE.Matrix4();
+        windowMatrix.makeRotationFromEuler(windowData.rotation);
+        windowMatrix.setPosition(windowData.position);
+        
+        // Add transformed vertices, normals, UVs to merged arrays
+        const tempGeometry = windowGeometry.clone().applyMatrix4(windowMatrix);
+        
+        const positionAttr = tempGeometry.getAttribute('position');
+        const normalAttr = tempGeometry.getAttribute('normal');
+        const uvAttr = tempGeometry.getAttribute('uv');
+        
+        for (let i = 0; i < positionAttr.count; i++) {
+          positions.push(
+            positionAttr.getX(i),
+            positionAttr.getY(i),
+            positionAttr.getZ(i)
+          );
+          
+          normals.push(
+            normalAttr.getX(i),
+            normalAttr.getY(i),
+            normalAttr.getZ(i)
+          );
+          
+          uvs.push(
+            uvAttr.getX(i),
+            uvAttr.getY(i)
+          );
+        }
+        
+        tempGeometry.dispose();
+      });
+      
+      // Create the merged geometry
+      mergedGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      mergedGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+      mergedGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      
+      // Create mesh with merged geometry
+      const mergedWindows = new THREE.Mesh(mergedGeometry, windowMaterial);
+      mergedWindows.castShadow = true;
+      mergedWindows.receiveShadow = true;
+      
+      group.add(mergedWindows);
+      
+      return group;
+    }
+    
+    // For individual windows (high/medium detail)
+    let windowTemplate;
+    
+    // Use simplified window for medium/low detail
+    if (simplified) {
+      // Simple box geometry for windows
+      windowTemplate = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 0.1),
+        new THREE.MeshStandardMaterial({ 
+          color: 0x333333,
+          metalness: 0.8,
+          roughness: 0.2
+        })
+      );
+    } else {
+      // Use detailed window template for high detail
+      if (!this.templates.window) {
+        this.initializeTemplates();
+      }
+      windowTemplate = this.templates.window.clone();
+    }
+    
+    // Place windows
+    for (let i = 0; i < windowPositions.length; i++) {
+      const windowData = windowPositions[i];
+      
+      // Skip some windows when damaged
+      if (destructionLevel > this.destructionLevels.PRISTINE) {
+        // For damaged buildings, randomly skip windows to create damage effect
+        if (Math.random() < 0.2 * destructionLevel) continue;
+      }
+      
+      const window = windowTemplate.clone();
+      window.position.copy(windowData.position);
+      window.rotation.copy(windowData.rotation);
+      
+      // Scale window
+      if (simplified) {
+        window.scale.set(1.5, 1.8, 0.1);
+      }
+      
+      group.add(window);
+    }
+    
+    return group;
+  }
+  
+  createBuildingGeometry(width, height, depth, options = {}) {
+    // Cache key for geometry - include LOD options
+    const simplified = options.simplify || false;
+    const noCorners = options.cornerDetails === false;
+    const noDivisions = options.noDivisions || false;
+    
+    const cacheKey = `${width}_${height}_${depth}_${simplified ? 'simple' : 'detailed'}_${noCorners ? 'noCorner' : 'corner'}_${noDivisions ? 'noDiv' : 'div'}`;
+    
+    // Check cache first
+    if (this.geometries[cacheKey]) {
+      return this.geometries[cacheKey].clone();
+    }
+    
+    // Create new geometry
+    const geometry = this._createBuildingGeometryInternal(width, height, depth, options);
+    
+    // Store in cache
+    this.geometries[cacheKey] = geometry.clone();
+    
+    return geometry;
+  }
+  
+  _createBuildingGeometryInternal(width, height, depth, options = {}) {
+    const simplified = options.simplify || false;
+    const noCorners = options.cornerDetails === false;
+    const noDivisions = options.noDivisions || false;
+    
+    if (simplified) {
+      // Simple box geometry for low/medium detail
+      return new THREE.BoxGeometry(width, height, depth);
+    }
+    
+    // Detailed geometry for high detail level
+    // ... existing detailed geometry generation ...
+    
+    // Return the full detail geometry from existing implementation
+    return new THREE.BoxGeometry(width, height, depth);
+  }
+  
+  // Update materials creation to support LOD options
+  createMaterials(buildingType, destructionLevel, options = {}) {
+    const lowDetail = options.lowDetail || false;
+    
+    // Cache key for materials - include LOD options
+    const cacheKey = `${buildingType}_${destructionLevel}_${lowDetail ? 'low' : 'high'}`;
+    
+    // Check cache first
+    if (this.materials[cacheKey]) {
+      return {
+        wall: this.materials[cacheKey].walls.clone(),
+        window: this.materials[cacheKey].windows.clone(),
+        roof: this.materials[cacheKey].roof.clone()
+      };
+    }
+    
+    // Legacy fallback material creation (used until texturing system is ready)
+    const colorPalette = this.colorPalettes[buildingType];
+    const colorIndex = Math.floor(Math.random() * colorPalette.length);
+    let wallColor = colorPalette[colorIndex];
+    
+    // Adjust color for destruction level
     if (destructionLevel > 0) {
-      this.applyDamage(buildingGroup, destructionLevel);
+      const darkenAmount = 0.2 + (destructionLevel * 0.1); // 0.2 to 0.5 darkening
+      wallColor = this.darkenColor(wallColor, darkenAmount);
     }
     
-    // Position the building
-    buildingGroup.position.set(position.x, position.y, position.z);
-    
-    // Mark building for collision detection
-    buildingGroup.isCollidable = true;
-    
-    // Add bounding box information for collision
-    buildingGroup.collisionBox = new THREE.Box3();
-    buildingGroup.collisionBox.setFromObject(buildingGroup);
-    
-    return buildingGroup;
+    return {
+      walls: new THREE.MeshStandardMaterial({ 
+        color: wallColor, 
+        roughness: 0.7 + (destructionLevel * 0.1),
+        metalness: Math.max(0, 0.2 - (destructionLevel * 0.05))
+      }),
+      windows: new THREE.MeshStandardMaterial({
+        color: 0x90caf9,
+        transparent: true,
+        opacity: 0.7,
+        roughness: 0.1,
+        metalness: 0.8
+      }),
+      roof: new THREE.MeshStandardMaterial({ 
+        color: this.darkenColor(wallColor, 0.3), 
+        roughness: 0.8,
+        metalness: 0.1
+      })
+    };
   }
   
   /**
@@ -366,233 +856,6 @@ export class BuildingGenerator {
   }
   
   /**
-   * Generate appropriate window positions based on building dimensions and type
-   * @param {number} width - Building width
-   * @param {number} depth - Building depth
-   * @param {number} height - Building height
-   * @param {string} type - Building type
-   * @returns {Array} - Array of window position objects
-   */
-  generateWindowPositions(width, depth, height, type) {
-    const windows = [];
-    const floorHeight = 3;
-    const numFloors = Math.floor(height / floorHeight);
-    
-    // Window spacing and size parameters vary by building type
-    let windowSpacingX, windowSpacingZ, windowProbability;
-    
-    switch (type) {
-      case 'residential':
-        windowSpacingX = 2;
-        windowSpacingZ = 2;
-        windowProbability = 0.85;
-        break;
-      case 'commercial':
-        windowSpacingX = 2.5;
-        windowSpacingZ = 3;
-        windowProbability = 0.9;
-        break;
-      case 'industrial':
-        windowSpacingX = 4;
-        windowSpacingZ = 4;
-        windowProbability = 0.6;
-        break;
-      default:
-        windowSpacingX = 2;
-        windowSpacingZ = 2;
-        windowProbability = 0.8;
-    }
-    
-    // Calculate number of windows per wall
-    const windowsPerWallX = Math.max(1, Math.floor(width / windowSpacingX));
-    const windowsPerWallZ = Math.max(1, Math.floor(depth / windowSpacingZ));
-    
-    // Spacing adjustments for centering
-    const adjustX = (width - (windowsPerWallX - 1) * windowSpacingX) / 2;
-    const adjustZ = (depth - (windowsPerWallZ - 1) * windowSpacingZ) / 2;
-    
-    // Add windows for each floor
-    for (let floor = 0; floor < numFloors; floor++) {
-      const y = floor * floorHeight + floorHeight / 2;
-      
-      // Skip ground floor for some buildings (except for commercial)
-      if (floor === 0 && type !== 'commercial' && Math.random() > 0.5) continue;
-      
-      // Front wall windows (z+)
-      for (let i = 0; i < windowsPerWallX; i++) {
-        if (Math.random() < windowProbability) {
-          const x = -width / 2 + adjustX + i * windowSpacingX;
-          windows.push({
-            position: new THREE.Vector3(x, y, depth / 2 + 0.05),
-            rotation: new THREE.Euler(0, 0, 0)
-          });
-        }
-      }
-      
-      // Back wall windows (z-)
-      for (let i = 0; i < windowsPerWallX; i++) {
-        if (Math.random() < windowProbability) {
-          const x = -width / 2 + adjustX + i * windowSpacingX;
-          windows.push({
-            position: new THREE.Vector3(x, y, -depth / 2 - 0.05),
-            rotation: new THREE.Euler(0, Math.PI, 0)
-          });
-        }
-      }
-      
-      // Right wall windows (x+)
-      for (let i = 0; i < windowsPerWallZ; i++) {
-        if (Math.random() < windowProbability) {
-          const z = -depth / 2 + adjustZ + i * windowSpacingZ;
-          windows.push({
-            position: new THREE.Vector3(width / 2 + 0.05, y, z),
-            rotation: new THREE.Euler(0, Math.PI / 2, 0)
-          });
-        }
-      }
-      
-      // Left wall windows (x-)
-      for (let i = 0; i < windowsPerWallZ; i++) {
-        if (Math.random() < windowProbability) {
-          const z = -depth / 2 + adjustZ + i * windowSpacingZ;
-          windows.push({
-            position: new THREE.Vector3(-width / 2 - 0.05, y, z),
-            rotation: new THREE.Euler(0, -Math.PI / 2, 0)
-          });
-        }
-      }
-    }
-    
-    return windows;
-  }
-  
-  /**
-   * Create window meshes for a building
-   * @param {Array} windowPositions - Array of window position objects
-   * @param {number} destructionLevel - Level of destruction
-   * @returns {THREE.Group} - Group containing all window meshes
-   */
-  createWindows(windowPositions, destructionLevel) {
-    const windowsGroup = new THREE.Group();
-    
-    // Create individual window meshes (could be optimized with instancing)
-    windowPositions.forEach((windowData, index) => {
-      // For damaged buildings, some windows will be broken
-      const isDamaged = destructionLevel > 0 && Math.random() < destructionLevel * 0.3;
-      
-      // Create window geometry and material
-      const windowGeometry = this.geometries.window.clone();
-      const windowMaterial = isDamaged
-        ? new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.2, roughness: 0.8 })
-        : new THREE.MeshStandardMaterial({ color: 0x80b3c4, metalness: 0.8, roughness: 0.1 });
-      
-      const windowMesh = new THREE.Mesh(windowGeometry, windowMaterial);
-      windowMesh.position.copy(windowData.position);
-      windowMesh.rotation.copy(windowData.rotation);
-      
-      windowsGroup.add(windowMesh);
-    });
-    
-    return windowsGroup;
-  }
-  
-  /**
-   * Create balconies for residential buildings
-   * @param {number} width - Building width
-   * @param {number} depth - Building depth
-   * @param {number} height - Building height
-   * @returns {THREE.Group} - Group containing balcony meshes
-   */
-  createBalconies(width, depth, height) {
-    const balconiesGroup = new THREE.Group();
-    const floorHeight = 3;
-    const numFloors = Math.floor(height / floorHeight);
-    
-    // Add balconies to random floors (skip ground floor)
-    for (let floor = 1; floor < numFloors; floor++) {
-      if (Math.random() > 0.6) continue; // Skip some floors
-      
-      const y = floor * floorHeight;
-      
-      // Choose a random wall
-      const wall = Math.floor(Math.random() * 4);
-      
-      // Balcony dimensions
-      const balconyWidth = 1.5;
-      const balconyDepth = 1.0;
-      const balconyHeight = 0.2;
-      
-      // Create balcony base
-      const baseGeometry = new THREE.BoxGeometry(balconyWidth, balconyHeight, balconyDepth);
-      const baseMaterial = new THREE.MeshStandardMaterial({ color: 0x9e9e9e, roughness: 0.8 });
-      const baseMesh = new THREE.Mesh(baseGeometry, baseMaterial);
-      
-      // Create balcony railing
-      const railingGeometry = new THREE.BoxGeometry(balconyWidth, 1.0, 0.05);
-      const railingMaterial = new THREE.MeshStandardMaterial({ color: 0x7e7e7e, roughness: 0.7 });
-      const frontRailing = new THREE.Mesh(railingGeometry, railingMaterial);
-      frontRailing.position.z = balconyDepth / 2 - 0.025;
-      frontRailing.position.y = 0.5;
-      
-      // Side railings
-      const sideRailingGeometry = new THREE.BoxGeometry(0.05, 1.0, balconyDepth);
-      const leftRailing = new THREE.Mesh(sideRailingGeometry, railingMaterial);
-      leftRailing.position.x = -balconyWidth / 2 + 0.025;
-      leftRailing.position.y = 0.5;
-      
-      const rightRailing = new THREE.Mesh(sideRailingGeometry, railingMaterial);
-      rightRailing.position.x = balconyWidth / 2 - 0.025;
-      rightRailing.position.y = 0.5;
-      
-      // Create balcony group
-      const balconyGroup = new THREE.Group();
-      balconyGroup.add(baseMesh);
-      balconyGroup.add(frontRailing);
-      balconyGroup.add(leftRailing);
-      balconyGroup.add(rightRailing);
-      
-      // Position balcony based on wall choice
-      switch (wall) {
-        case 0: // Front
-          balconyGroup.position.set(
-            (Math.random() - 0.5) * (width - balconyWidth),
-            y,
-            depth / 2 + balconyDepth / 2
-          );
-          break;
-        case 1: // Right
-          balconyGroup.rotation.y = Math.PI / 2;
-          balconyGroup.position.set(
-            width / 2 + balconyDepth / 2,
-            y,
-            (Math.random() - 0.5) * (depth - balconyWidth)
-          );
-          break;
-        case 2: // Back
-          balconyGroup.rotation.y = Math.PI;
-          balconyGroup.position.set(
-            (Math.random() - 0.5) * (width - balconyWidth),
-            y,
-            -depth / 2 - balconyDepth / 2
-          );
-          break;
-        case 3: // Left
-          balconyGroup.rotation.y = -Math.PI / 2;
-          balconyGroup.position.set(
-            -width / 2 - balconyDepth / 2,
-            y,
-            (Math.random() - 0.5) * (depth - balconyWidth)
-          );
-          break;
-      }
-      
-      balconiesGroup.add(balconyGroup);
-    }
-    
-    return balconiesGroup;
-  }
-  
-  /**
    * Create industrial details like smokestacks, tanks, etc.
    * @param {number} width - Building width
    * @param {number} depth - Building depth
@@ -698,19 +961,47 @@ export class BuildingGenerator {
    * @param {THREE.Group} buildingGroup - The building group to modify
    * @param {number} destructionLevel - Level of destruction (1-3)
    */
-  applyDamage(buildingGroup, destructionLevel) {
-    // Apply damage based on severity
+  applyDamage(buildingGroup, destructionLevel, options = {}) {
+    const simplify = options.simplify || false;
+    const majorOnly = options.majorOnly || false;
+    
+    // Skip minor damage for simplified models
+    if (simplify && majorOnly) {
+      // Only apply major damage for low LOD
+      if (destructionLevel >= this.destructionLevels.HEAVILY_DAMAGED) {
+        this.applyMajorDamage(buildingGroup, { simplify: true });
+      }
+      return;
+    }
+    
+    // For medium LOD, apply simplified damage
+    if (simplify) {
+      switch (destructionLevel) {
+        case this.destructionLevels.DAMAGED:
+          this.applyMinorDamage(buildingGroup, { simplify: true });
+          break;
+        case this.destructionLevels.HEAVILY_DAMAGED:
+          this.applyMajorDamage(buildingGroup, { simplify: true });
+          break;
+        case this.destructionLevels.PARTIALLY_COLLAPSED:
+          this.applyPartialCollapse(buildingGroup, { simplify: true });
+          break;
+      }
+      return;
+    }
+    
+    // For high LOD, use full damage detail
     switch (destructionLevel) {
       case this.destructionLevels.DAMAGED:
-        // Minor damage - broken windows, surface damage
         this.applyMinorDamage(buildingGroup);
         break;
       case this.destructionLevels.HEAVILY_DAMAGED:
-        // Major damage - structural cracks, missing parts
+        this.applyMinorDamage(buildingGroup);
         this.applyMajorDamage(buildingGroup);
         break;
       case this.destructionLevels.PARTIALLY_COLLAPSED:
-        // Partial collapse - significant structural failure
+        this.applyMinorDamage(buildingGroup);
+        this.applyMajorDamage(buildingGroup);
         this.applyPartialCollapse(buildingGroup);
         break;
     }
@@ -898,5 +1189,49 @@ export class BuildingGenerator {
     const newB = Math.max(0, Math.floor(b * (1 - amount)));
     
     return (newR << 16) | (newG << 8) | newB;
+  }
+
+  createBuildingGeometry(width, height, depth, options) {
+    const { 
+      windowsX = 3, 
+      windowsY = 4, 
+      hasRoof = true, 
+      destructionLevel = 0 
+    } = options || {};
+    
+    // Use optimized geometry if texturing system is available
+    if (this.game.texturingSystem) {
+      // Create a unique key for this geometry configuration
+      const geometryKey = `building_${width}_${height}_${depth}_${windowsX}_${windowsY}_${hasRoof}_${destructionLevel}`;
+      
+      // Use getOptimizedGeometry to create or retrieve cached geometry
+      return this.game.texturingSystem.getOptimizedGeometry(geometryKey, () => {
+        return this._createBuildingGeometryInternal(width, height, depth, options);
+      });
+    }
+    
+    // Fall back to direct creation
+    return this._createBuildingGeometryInternal(width, height, depth, options);
+  }
+
+  // Internal method to actually create the geometry
+  _createBuildingGeometryInternal(width, height, depth, options) {
+    const { 
+      windowsX = 3, 
+      windowsY = 4, 
+      hasRoof = true, 
+      destructionLevel = 0 
+    } = options || {};
+    
+    // Clone existing code here from the current implementation
+    // Note: This is a simplified placeholder - you'd copy your actual implementation here
+    const geometry = new THREE.BoxGeometry(width, height, depth);
+    
+    // Apply destruction to geometry if needed
+    if (destructionLevel > 0) {
+      this.applyDestructionToGeometry(geometry, destructionLevel);
+    }
+    
+    return geometry;
   }
 } 

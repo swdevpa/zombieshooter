@@ -9,6 +9,7 @@ export class TexturingSystem {
   constructor(game, assetLoader) {
     this.game = game;
     this.assetLoader = assetLoader || game.assetLoader;
+    this.assetManager = game.assetManager; // Get the AssetManager reference
     
     // Define color palettes for buildings
     this.colorPalettes = {
@@ -77,6 +78,9 @@ export class TexturingSystem {
       }
     };
     
+    // Number of shared materials created
+    this.sharedMaterialCount = 0;
+    
     // Initialize textures
     this.initializeTextures();
   }
@@ -135,51 +139,23 @@ export class TexturingSystem {
    */
   createCityMaterials() {
     // Create street material
-    this.cityMaterials.street = new THREE.MeshStandardMaterial({
-      color: 0x333333,
-      roughness: this.materialParams.street.roughness,
-      metalness: this.materialParams.street.metalness
-    });
+    this.cityMaterials.street = this.createCityComponentMaterial('street');
     
     // Create sidewalk material
-    this.cityMaterials.sidewalk = new THREE.MeshStandardMaterial({
-      color: 0x9e9e9e,
-      roughness: 0.85,
-      metalness: 0.05
-    });
+    this.cityMaterials.sidewalk = this.createCityComponentMaterial('sidewalk');
     
     // Create debris materials
-    this.cityMaterials.debris.concrete = new THREE.MeshStandardMaterial({
-      color: 0x9e9e9e,
-      roughness: 0.9,
-      metalness: 0.1
-    });
+    this.cityMaterials.debris.concrete = this.createCityComponentMaterial('debris');
     
-    this.cityMaterials.debris.metal = new THREE.MeshStandardMaterial({
-      color: 0x777777,
-      roughness: 0.7,
-      metalness: 0.4
-    });
+    this.cityMaterials.debris.metal = this.createCityComponentMaterial('metal');
     
     // Create vehicle materials
-    this.cityMaterials.vehicles.car = new THREE.MeshStandardMaterial({
-      color: 0x546e7a,
-      roughness: 0.7,
-      metalness: 0.3
-    });
+    this.cityMaterials.vehicles.car = this.createCityComponentMaterial('vehicle');
     
-    this.cityMaterials.vehicles.rust = new THREE.MeshStandardMaterial({
-      color: 0x8d6e63,
-      roughness: 0.8,
-      metalness: 0.2
-    });
+    this.cityMaterials.vehicles.rust = this.createCityComponentMaterial('rust');
     
     // Create prop materials (lampposts, signs, etc.)
-    this.cityMaterials.props.metal = new THREE.MeshStandardMaterial({
-      color: 0x555555,
-      roughness: 0.6,
-      metalness: 0.5
-    });
+    this.cityMaterials.props.metal = this.createCityComponentMaterial('prop');
   }
   
   /**
@@ -187,98 +163,95 @@ export class TexturingSystem {
    */
   createApocalypticMaterials() {
     // Create wood material
-    this.apocalypticMaterials.wood = new THREE.MeshStandardMaterial({
-      color: 0x8B4513, // Brown
-      roughness: 0.9,
-      metalness: 0.1
-    });
+    this.apocalypticMaterials.wood = this.createCityComponentMaterial('wood');
     
     // Create metal material
-    this.apocalypticMaterials.metal = new THREE.MeshStandardMaterial({
-      color: 0x7F7F7F, // Gray
-      roughness: 0.7,
-      metalness: 0.5,
-      flatShading: true
-    });
+    this.apocalypticMaterials.metal = this.createCityComponentMaterial('metal');
     
     // Create blood material
-    this.apocalypticMaterials.blood = new THREE.MeshStandardMaterial({
-      color: 0x8B0000, // Dark red
-      roughness: 1.0,
-      metalness: 0.0,
-      transparent: true,
-      opacity: 0.9
-    });
+    this.apocalypticMaterials.blood = this.createCityComponentMaterial('blood');
     
     // Create concrete material
-    this.apocalypticMaterials.concrete = new THREE.MeshStandardMaterial({
-      color: 0x9E9E9E, // Gray
-      roughness: 0.9,
-      metalness: 0.1,
-      flatShading: true
-    });
+    this.apocalypticMaterials.concrete = this.createCityComponentMaterial('concrete');
     
     // Create military material
-    this.apocalypticMaterials.military = new THREE.MeshStandardMaterial({
-      color: 0x4B5320, // Olive drab
-      roughness: 0.8,
-      metalness: 0.2
-    });
+    this.apocalypticMaterials.military = this.createCityComponentMaterial('military');
     
     // Create fabric material
-    this.apocalypticMaterials.fabric = new THREE.MeshStandardMaterial({
-      color: 0x5D4037, // Brown
-      roughness: 1.0,
-      metalness: 0.0
-    });
+    this.apocalypticMaterials.fabric = this.createCityComponentMaterial('fabric');
     
     // Create plants material
-    this.apocalypticMaterials.plants = new THREE.MeshStandardMaterial({
-      color: 0x33691E, // Dark green
-      roughness: 0.9,
-      metalness: 0.0,
-      transparent: true,
-      side: THREE.DoubleSide
-    });
+    this.apocalypticMaterials.plants = this.createCityComponentMaterial('plants');
     
     // Create rusty metal material
-    this.apocalypticMaterials.rustyMetal = new THREE.MeshStandardMaterial({
-      color: 0x8D6E63, // Rust brown
-      roughness: 0.8,
-      metalness: 0.3,
-      flatShading: true
-    });
+    this.apocalypticMaterials.rustyMetal = this.createCityComponentMaterial('rustyMetal');
   }
   
   /**
-   * Creates a building material based on type and destruction level
+   * Creates a building material with the specified parameters
+   * @param {string} buildingType - Type of building (residential, commercial, industrial)
+   * @param {number} destructionLevel - Level of destruction (0-3)
+   * @returns {THREE.Material} The created material
    */
-  createBuildingMaterial(buildingType, destructionLevel) {
-    // Get base texture based on building type
+  createBuildingMaterial(buildingType, destructionLevel = 0) {
+    // Check if we already have this material cached
+    if (this.buildingMaterials[buildingType][destructionLevel]) {
+      return this.buildingMaterials[buildingType][destructionLevel];
+    }
+    
+    // Use AssetManager if available for shared materials
+    if (this.assetManager) {
+      const baseTexture = this.getBuildingBaseTexture(buildingType);
+      const normalMap = this.getBuildingBaseNormalMap(buildingType);
+      const params = this.materialParams[buildingType];
+      
+      // Apply destruction effects
+      const destructionAmount = destructionLevel * 0.25; // 0 to 0.75
+      
+      // Create shared material parameters
+      const materialParams = {
+        type: 'standard',
+        map: baseTexture,
+        normalMap: normalMap,
+        roughness: params.roughness + (destructionAmount * 0.3),
+        metalness: params.metalness - (destructionAmount * 0.05),
+        bumpScale: params.bumpScale,
+        color: this.getRandomColorFromPalette(buildingType),
+        // Add some variation based on destruction level
+        displacementScale: destructionAmount * 0.1,
+        envMapIntensity: 1.0 - (destructionAmount * 0.5)
+      };
+      
+      // Get shared material from AssetManager
+      const material = this.assetManager.getSharedMaterial(materialParams);
+      
+      // Cache the material
+      this.buildingMaterials[buildingType][destructionLevel] = material;
+      this.sharedMaterialCount++;
+      
+      return material;
+    }
+    
+    // Fall back to original implementation if AssetManager is not available
     const baseTexture = this.getBuildingBaseTexture(buildingType);
     const baseNormalMap = this.getBuildingBaseNormalMap(buildingType);
+    const params = this.materialParams[buildingType];
     
-    // Get color based on building type with destructive level adjustments
-    const baseColor = this.getBuildingBaseColor(buildingType, destructionLevel);
+    // Apply destruction effects
+    const destructionAmount = destructionLevel * 0.25; // 0 to 0.75
     
-    // Adjust roughness and metalness based on destruction level
-    const roughnessAdjustment = Math.min(0.3, destructionLevel * 0.1);
-    const metalnessReduction = Math.min(0.05, destructionLevel * 0.02);
-    
-    // Create material
+    // Create new material
     const material = new THREE.MeshStandardMaterial({
       map: baseTexture,
       normalMap: baseNormalMap,
-      color: baseColor,
-      roughness: this.materialParams[buildingType].roughness + roughnessAdjustment,
-      metalness: Math.max(0, this.materialParams[buildingType].metalness - metalnessReduction),
-      bumpScale: this.materialParams[buildingType].bumpScale
+      roughness: params.roughness + (destructionAmount * 0.3),
+      metalness: params.metalness - (destructionAmount * 0.05),
+      bumpScale: params.bumpScale,
+      color: this.getRandomColorFromPalette(buildingType)
     });
     
-    // Add dirt and damage overlays based on destruction level
-    if (destructionLevel > 0) {
-      // Future enhancement: Add overlay textures for damage
-    }
+    // Cache the material
+    this.buildingMaterials[buildingType][destructionLevel] = material;
     
     return material;
   }
@@ -386,12 +359,114 @@ export class TexturingSystem {
   }
   
   /**
+   * Creates a material for a city component like streets, sidewalks, etc.
+   * @param {string} componentType - Type of city component
+   * @returns {THREE.Material} The created material
+   */
+  createCityComponentMaterial(componentType) {
+    // Check if we already have this material cached
+    if (this.cityMaterials[componentType]) {
+      return this.cityMaterials[componentType];
+    }
+    
+    // Use AssetManager if available for shared materials
+    if (this.assetManager && this.materialParams[componentType]) {
+      const params = this.materialParams[componentType];
+      let baseTexture;
+      
+      switch (componentType) {
+        case 'street':
+          baseTexture = this.assetLoader.getTexture('road');
+          break;
+        case 'sidewalk':
+          baseTexture = this.assetLoader.getTexture('concrete');
+          break;
+        default:
+          baseTexture = this.assetLoader.getTexture('concrete');
+      }
+      
+      // Create shared material parameters
+      const materialParams = {
+        type: 'standard',
+        map: baseTexture,
+        roughness: params.roughness,
+        metalness: params.metalness,
+        bumpScale: params.bumpScale,
+        color: 0xffffff
+      };
+      
+      // Get shared material from AssetManager
+      const material = this.assetManager.getSharedMaterial(materialParams);
+      
+      // Cache the material
+      this.cityMaterials[componentType] = material;
+      
+      return material;
+    }
+    
+    // Fall back to original implementation
+    let baseTexture;
+    const params = this.materialParams[componentType] || {
+      roughness: 0.9,
+      metalness: 0.1,
+      bumpScale: 0.01
+    };
+    
+    switch (componentType) {
+      case 'street':
+        baseTexture = this.assetLoader.getTexture('road');
+        break;
+      case 'sidewalk':
+        baseTexture = this.assetLoader.getTexture('concrete');
+        break;
+      default:
+        baseTexture = this.assetLoader.getTexture('concrete');
+    }
+    
+    // Create new material
+    const material = new THREE.MeshStandardMaterial({
+      map: baseTexture,
+      roughness: params.roughness,
+      metalness: params.metalness,
+      bumpScale: params.bumpScale
+    });
+    
+    // Cache the material
+    this.cityMaterials[componentType] = material;
+    
+    return material;
+  }
+  
+  /**
+   * Get optimized geometry with caching
+   * @param {string} key - Geometry key for caching
+   * @param {Function} createFn - Function to create geometry if not cached
+   * @returns {THREE.BufferGeometry} The geometry
+   */
+  getOptimizedGeometry(key, createFn) {
+    // Use AssetManager if available for shared geometries
+    if (this.assetManager) {
+      return this.assetManager.getOptimizedGeometry(createFn, key);
+    }
+    
+    // Fall back to direct creation
+    return createFn();
+  }
+  
+  /**
    * Updates texture quality based on performance settings
    */
   updateTextureQuality(quality) {
     this.textureQuality = quality;
     
-    // Update texture filtering based on quality
+    // If AssetManager is available, let it handle quality settings
+    if (this.assetManager) {
+      this.assetManager.applyQualitySettings(quality);
+      console.log(`Texture quality updated to: ${quality} via AssetManager`);
+      return;
+    }
+    
+    // Otherwise use the old implementation
     const filtering = this.getFilteringByQuality(quality);
     
     // Apply to all textures
@@ -437,10 +512,12 @@ export class TexturingSystem {
    * Disposes of all materials to free memory
    */
   dispose() {
+    console.log('Disposing TexturingSystem materials');
+    
     // Dispose building materials
     for (const type in this.buildingMaterials) {
       for (const level in this.buildingMaterials[type]) {
-        if (this.buildingMaterials[type][level]) {
+        if (this.buildingMaterials[type][level] && this.buildingMaterials[type][level].dispose) {
           this.buildingMaterials[type][level].dispose();
         }
       }
@@ -450,20 +527,25 @@ export class TexturingSystem {
     for (const type in this.cityMaterials) {
       if (typeof this.cityMaterials[type] === 'object' && !Array.isArray(this.cityMaterials[type])) {
         for (const subtype in this.cityMaterials[type]) {
-          if (this.cityMaterials[type][subtype]) {
+          if (this.cityMaterials[type][subtype] && this.cityMaterials[type][subtype].dispose) {
             this.cityMaterials[type][subtype].dispose();
           }
         }
-      } else if (this.cityMaterials[type]) {
+      } else if (this.cityMaterials[type] && this.cityMaterials[type].dispose) {
         this.cityMaterials[type].dispose();
       }
     }
     
     // Dispose apocalyptic materials
     for (const type in this.apocalypticMaterials) {
-      if (this.apocalypticMaterials[type]) {
+      if (this.apocalypticMaterials[type] && this.apocalypticMaterials[type].dispose) {
         this.apocalypticMaterials[type].dispose();
       }
+    }
+    
+    // Log shared material stats if using AssetManager
+    if (this.assetManager) {
+      console.log(`Shared material count: ${this.sharedMaterialCount}`);
     }
     
     console.log('TexturingSystem materials disposed');
