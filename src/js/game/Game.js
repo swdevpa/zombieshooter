@@ -3,584 +3,1016 @@ import { Player } from './entities/Player.js';
 import { ZombieManager } from './managers/ZombieManager.js';
 import { InputManager } from './managers/InputManager.js';
 import { Map } from './world/Map.js';
+import { City } from './world/City.js';
 import { PixelFilter } from '../utils/PixelFilter.js';
 import { UI } from './ui/UI.js';
 import { CullingManager } from './managers/CullingManager.js';
+import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
+import { AssetLoader } from '../utils/AssetLoader.js';
+import { UiManager } from './managers/UiManager.js';
+import { LevelManager } from './managers/LevelManager.js';
+import { PerformanceMonitor } from '../utils/PerformanceMonitor.js';
+import { EntityManager } from './managers/EntityManager.js';
+import { TexturingSystem } from './world/TexturingSystem.js';
+import { BuildingGenerator } from './world/BuildingGenerator.js';
+import { AtmosphericEffects } from './world/AtmosphericEffects.js';
+import { SceneManager } from './managers/SceneManager.js';
+import { CityManager } from './managers/CityManager.js';
+import { WeaponManager } from './managers/WeaponManager.js';
+import { SoundManager } from './managers/SoundManager.js';
+import { NavigationGrid } from './world/NavigationGrid.js';
 
 export class Game {
-  constructor(assetLoader) {
-    this.assetLoader = assetLoader;
-    this.clock = new THREE.Clock();
-    this.isGameOver = false;
+  constructor(container, assetLoader) {
+    this.container = container;
+    this.width = window.innerWidth;
+    this.height = window.innerHeight;
+
+    // Game properties
+    this.running = false;
+    this.paused = false;
+    this.gameOver = false;
     this.score = 0;
-    this.wave = 1;
-    
-    // Game state
+
+    // Game state for tracking game progress and statistics
     this.gameState = {
-      isPaused: false,
-      score: 0,
-      wave: 1,
+      status: 'idle', // 'idle', 'playing', 'gameover', 'paused'
+      zombiesSpawned: 0,
       zombiesKilled: 0,
-      zombiesSpawned: 0
+      wave: 1,
+      score: 0,
+      difficulty: 'normal' // 'easy', 'normal', 'hard'
+    };
+
+    // Performance settings
+    this.settings = {
+      limitFPS: false,
+      targetFPS: 60,
+      frameLimitDelta: 1000 / 60, // ms per frame at 60 FPS
+      cullingEnabled: true,
+      qualityLevel: 'high', // low, medium, high
+      postProcessing: true,
+      shadows: true,
+    };
+
+    // Mouse look controls
+    this.mouseLook = {
+      enabled: true,
+      sensitivity: 0.002, // Base sensitivity
+      sensitivityMultiplier: 1.0, // User adjustable multiplier
+      smoothing: true, // Whether to apply smoothing
+      smoothingFactor: 0.85, // 0 = no smoothing, 1 = infinite smoothing
+      inverseLookY: false, // Invert Y-axis
+      currentMovement: new THREE.Vector2(0, 0), // Current smoothed movement
+      rawMovement: new THREE.Vector2(0, 0) // Raw input from mouse
     };
     
-    // Wellenverarbeitung
-    this.isProcessingWaveCompletion = false;
+    this.pitchObject = new THREE.Object3D(); // For vertical look
+    this.yawObject = new THREE.Object3D(); // For horizontal look
     
-    // Camera smoothing
-    this.cameraPosition = new THREE.Vector3();
-    this.cameraLookAt = new THREE.Vector3();
-    this.cameraSmoothing = 0.8; // Höherer Wert = weniger Smoothing (0-1)
+    // Recoil effect
+    this.recoilAmount = 0.03;
+    this.recoilRecovery = 5;
+    this.currentRecoil = 0;
     
-    // FPS-Anzeige
+    // Camera physics
+    this.cameraOffset = new THREE.Vector3(0, 1.7, 0); // Eye height
+    this.cameraHeadBob = {
+      enabled: true,
+      amplitude: 0.05,
+      frequency: 10,
+      value: 0,
+      lastStep: 0,
+    };
+
+    // Initialize Three.js components
+    this.initThree();
+    
+    // Add camera to pitch object
+    this.pitchObject.add(this.camera);
+    
+    // Add objects to scene
+    this.yawObject.add(this.pitchObject);
+    this.scene.add(this.yawObject);
+
+    // Initialize asset loader
+    this.assetLoader = assetLoader || new AssetLoader();
+
+    // Initialize managers
+    this.initManagers();
+
+    // Initialize player and camera
+    this.player = null;
+
+    // Set up events
+    this.setupEvents();
+
+    // Pointer lock state
+    this.pointerLocked = false;
+
+    // FPS counter
     this.fpsCounter = {
-      element: null,
       frames: 0,
       lastTime: 0,
-      fps: 0,
-      updateInterval: 500 // Aktualisierung alle 500ms
+      value: 0,
     };
+
+    // Performance monitor
+    this.performanceMonitor = new PerformanceMonitor(this);
+
+    // Frame timing
+    this.frameTiming = {
+      lastFrameTime: 0,
+      deltaTime: 0,
+      frameId: null,
+      frameTimeTarget: this.settings.frameLimitDelta,
+      frameStartTime: 0,
+    };
+
+    // Setup game systems
+    this.setupSystems();
   }
-  
-  init() {
-    // Setup renderer
-    this.setupRenderer();
-    
-    // Setup camera
-    this.setupCamera();
-    
-    // Setup scene
-    this.setupScene();
-    
-    // Setup map
-    this.setupMap();
-    
-    // Setup player
-    this.setupPlayer();
-    
-    // Setup zombie manager
-    this.setupZombieManager();
-    
-    // Setup input manager
-    this.setupInputManager();
-    
-    // Setup UI
-    this.setupUI();
-    
-    // Setup culling manager
-    this.setupCullingManager();
-    
-    // Setup pixel filter for retro look
-    this.setupPixelFilter();
-    
-    // Setup event listeners
-    this.setupEventListeners();
-    
-    // Setup FPS counter
-    this.setupFPSCounter();
-    
-    // Handle window resize
-    window.addEventListener('resize', this.onWindowResize.bind(this));
-    
-    // Start the game
-    this.start();
-  }
-  
-  setupRenderer() {
-    console.log("Setting up renderer...");
-    this.renderer = new THREE.WebGLRenderer({ 
-      antialias: true, // Anti-Aliasing aktivieren für bessere Qualität
-      powerPreference: 'high-performance', // Bessere Performance
-      logarithmicDepthBuffer: true, // Verbessert Z-fighting bei entfernten Objekten
-      precision: 'highp', // Hohe Präzision für bessere Darstellung
-      stencil: true, // Aktiviere Stencil-Buffer
-      depth: true, // Aktiviere Tiefenpuffer
-      premultipliedAlpha: true, // Wichtig für korrekte Transparenz-Darstellung
-      preserveDrawingBuffer: true // Verhindert Flackern bei transparenten Objekten
-    });
-    
-    console.log("WebGLRenderer created");
-    
-    // Überprüfe, ob WebGL verfügbar ist
-    try {
-      const gl = this.renderer.getContext();
-      console.log("WebGL context:", {
-        renderer: this.renderer,
-        glContext: gl ? "Available" : "Not available",
-        vendor: gl.getParameter(gl.VENDOR),
-        renderer: gl.getParameter(gl.RENDERER)
-      });
-    } catch (e) {
-      console.error("Error checking WebGL context:", e);
-    }
-    
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+  initThree() {
+    // Create scene
+    this.scene = new THREE.Scene();
+    //this.scene.background = new THREE.Color(0x88ccee);
+    //this.scene.fog = new THREE.FogExp2(0x88ccee, 0.02);
+
+    // Create renderer
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setSize(this.width, this.height);
+    this.renderer.shadowMap.enabled = this.settings.shadows;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Enable info logging for performance monitoring
+    this.renderer.info.autoReset = false;
+    this.container.appendChild(this.renderer.domElement);
+
+    // Create camera
+    this.camera = new THREE.PerspectiveCamera(75, this.width / this.height, 0.1, 1000);
+    // We'll add the camera to the pitchObject after this method returns
+
+    // We'll initialize atmospheric effects in the init method instead of adding lights here
     
-    // Optimierte Schatten-Einstellungen
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap; // Weniger aufwändig als PCFSoftShadowMap
-    this.renderer.shadowMap.autoUpdate = false; // Manuelles Update von Schatten
-    this.renderer.shadowMap.needsUpdate = true; // Initial update
+    // Add a simple ground
+    const groundGeometry = new THREE.PlaneGeometry(100, 100);
+    const groundMaterial = new THREE.MeshStandardMaterial({
+      color: 0x999999,
+      roughness: 0.8,
+      metalness: 0.2,
+    });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+    ground.receiveShadow = this.settings.shadows;
+    this.scene.add(ground);
+  }
+
+  initManagers() {
+    // Initialize UI manager
+    this.uiManager = new UiManager(this);
+    this.uiManager.init();
+
+    // Initialize input manager
+    this.inputManager = new InputManager(this);
+
+    // Initialize level manager
+    this.levelManager = new LevelManager(this);
+    this.levelManager.init();
+
+    // Initialize culling manager
+    this.cullingManager = new CullingManager(this);
+
+    // Initialize zombie manager
+    this.zombieManager = new ZombieManager(this);
     
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace; // Aktualisiert für neuere Three.js-Versionen
-    this.renderer.gammaFactor = 2.2; // Standard-Gammawert
-    this.renderer.setClearColor(0x87CEEB, 1); // Hintergrundfarbe explizit setzen
-    this.renderer.sortObjects = true; // Aktiviere Objekt-Sortierung für korrekte Transparenz
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping; // Verbesserte Farbdarstellung
-    this.renderer.toneMappingExposure = 1.0;
-    
-    // Render-Statistiken für Performance-Diagnose
-    // Verhindert fehlende Elemente aufgrund von Timeouts
-    this.renderer.info.autoReset = true;
-    
-    // Renderer-Element zum DOM hinzufügen
-    document.body.appendChild(this.renderer.domElement);
-    console.log("Renderer domElement added to body", {
-      domElement: this.renderer.domElement,
-      width: this.renderer.domElement.width,
-      height: this.renderer.domElement.height,
-      style: this.renderer.domElement.style
+    // Initialize entity manager
+    this.entityManager = new EntityManager(this);
+    this.entityManager.init();
+  }
+
+  setupEvents() {
+    // Handle window resize
+    window.addEventListener('resize', this.onResize.bind(this));
+
+    // Setup pointer lock events
+    document.addEventListener('pointerlockchange', this.onPointerLockChange.bind(this), false);
+    document.addEventListener('pointerlockerror', this.onPointerLockError.bind(this), false);
+
+    // Setup click-to-play
+    const clickToPlay = document.getElementById('click-to-play');
+    if (clickToPlay) {
+      clickToPlay.addEventListener('click', this.requestPointerLock.bind(this), false);
+    }
+
+    // Setup mouse movement for camera control
+    document.addEventListener('mousemove', this.onMouseMove.bind(this), false);
+
+    // Setup keyboard shortcuts
+    document.addEventListener('keydown', (event) => {
+      // Escape key to pause
+      if (event.key === 'Escape') {
+        this.togglePause();
+      }
+
+      // Performance shortcuts - F7 to cycle quality settings
+      if (event.key === 'F7') {
+        this.togglePerformanceSettings();
+      }
+      
+      // Settings shortcut - Alt+S to open settings menu
+      if (event.key === 's' && event.altKey) {
+        event.preventDefault();
+        if (this.uiManager) {
+          if (this.paused) {
+            this.uiManager.showSettingsMenu();
+          } else {
+            // Pause game first, then show settings
+            this.pause();
+            this.uiManager.showSettingsMenu();
+          }
+        }
+      }
     });
   }
-  
-  setupCamera() {
-    // Setup perspective camera with FPS-friendly FOV
-    const aspectRatio = window.innerWidth / window.innerHeight;
-    
-    this.camera = new THREE.PerspectiveCamera(
-      75,                     // Field of view - reduziert für weniger Verzerrung
-      aspectRatio,            // Aspect ratio
-      0.01,                   // Near clipping plane - kleinerer Wert gegen Flickering
-      500                     // Far clipping plane - reduziert für bessere Tiefenpräzision
+
+  requestPointerLock() {
+    // Request pointer lock on the renderer's canvas
+    this.renderer.domElement.requestPointerLock =
+      this.renderer.domElement.requestPointerLock ||
+      this.renderer.domElement.mozRequestPointerLock ||
+      this.renderer.domElement.webkitRequestPointerLock;
+
+    this.renderer.domElement.requestPointerLock();
+  }
+
+  onPointerLockChange() {
+    this.pointerLocked =
+      document.pointerLockElement === this.renderer.domElement ||
+      document.mozPointerLockElement === this.renderer.domElement ||
+      document.webkitPointerLockElement === this.renderer.domElement;
+
+    // Show/hide click-to-play overlay
+    const clickToPlay = document.getElementById('click-to-play');
+    if (clickToPlay) {
+      clickToPlay.style.display = this.pointerLocked ? 'none' : 'flex';
+    }
+
+    // Pause/unpause game based on pointer lock
+    if (this.pointerLocked) {
+      if (this.paused && !this.gameOver) {
+        this.unpause();
+      }
+    } else {
+      if (!this.paused && this.running && !this.gameOver) {
+        this.pause();
+      }
+    }
+  }
+
+  onPointerLockError() {
+    console.error('Error obtaining pointer lock');
+  }
+
+  onMouseMove(event) {
+    if (!this.pointerLocked || this.paused || !this.running || !this.mouseLook.enabled) return;
+
+    // Calculate mouse movement
+    const movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
+    const movementY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
+
+    // Store raw movement for smoothing
+    this.mouseLook.rawMovement.set(
+      movementX * this.mouseLook.sensitivity * this.mouseLook.sensitivityMultiplier,
+      movementY * this.mouseLook.sensitivity * this.mouseLook.sensitivityMultiplier * (this.mouseLook.inverseLookY ? -1 : 1)
     );
     
-    // Position the camera higher and further back for initial view
-    this.camera.position.set(0, 5, 10);
-    this.camera.lookAt(0, 0, 0);
-    
-    console.log("Camera setup:", {
-      position: this.camera.position.clone(),
-      lookAt: new THREE.Vector3(0, 0, 0),
-      fov: this.camera.fov
-    });
+    // Apply movement immediately if smoothing is disabled
+    if (!this.mouseLook.smoothing) {
+      this.applyMouseLook(this.mouseLook.rawMovement.x, this.mouseLook.rawMovement.y);
+    }
   }
   
-  setupScene() {
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x87CEEB); // Sky blue background
+  updateMouseLook(deltaTime) {
+    if (!this.mouseLook.enabled || !this.mouseLook.smoothing) return;
     
-    // Add ambient light
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.5); // Erhöhte Helligkeit für bessere Sichtbarkeit
-    this.scene.add(ambientLight);
+    // Apply smoothing to mouse movement
+    this.mouseLook.currentMovement.lerp(this.mouseLook.rawMovement, 1 - this.mouseLook.smoothingFactor);
     
-    // Add directional light (sun)
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    directionalLight.position.set(50, 200, 100); // Position weit oben für maximale Ausleuchtung
-    directionalLight.castShadow = true;
+    // Apply the smoothed movement
+    this.applyMouseLook(this.mouseLook.currentMovement.x, this.mouseLook.currentMovement.y);
     
-    // Optimierte Schatteneinstellungen
-    directionalLight.shadow.mapSize.width = 1024;
-    directionalLight.shadow.mapSize.height = 1024;
-    directionalLight.shadow.camera.near = 10;
-    directionalLight.shadow.camera.far = 400;
-    directionalLight.shadow.camera.left = -100;
-    directionalLight.shadow.camera.right = 100;
-    directionalLight.shadow.camera.top = 100;
-    directionalLight.shadow.camera.bottom = -100;
-    
-    this.scene.add(directionalLight);
-    
-    // Füge ein Hemisphere-Licht hinzu für realistischeres Umgebungslicht
-    const hemisphereLight = new THREE.HemisphereLight(0xFFFFFF, 0x444444, 1.0);
-    this.scene.add(hemisphereLight);
-    
-    // Optionaler Fog-Effekt (auskommentiert, kann aktiviert werden wenn gewünscht)
-    // this.scene.fog = new THREE.FogExp2(0x87CEEB, 0.01); // Subtiler Nebel für Tiefenwirkung
-    
-    console.log("Scene setup complete with lights", {
-      ambientLight: ambientLight,
-      directionalLight: directionalLight,
-      hemisphereLight: hemisphereLight,
-      sceneChildren: this.scene.children.length
-    });
-    
-    // Füge Debug-Objekte hinzu, um zu testen, ob die Rendering-Pipeline funktioniert
-    this.addDebugObjects();
+    // Reset raw movement to prevent continued motion when mouse stops
+    this.mouseLook.rawMovement.set(0, 0);
   }
   
-  // Debug-Funktion, um sicherzustellen, dass das Rendering grundsätzlich funktioniert
-  addDebugObjects() {
-    // Erstelle einen großen Boden für Orientierung
-    const gridHelper = new THREE.GridHelper(100, 20, 0xff0000, 0x444444);
-    this.scene.add(gridHelper);
+  applyMouseLook(movementX, movementY) {
+    // Apply to camera rotation
+    this.yawObject.rotation.y -= movementX;
+    this.pitchObject.rotation.x -= movementY;
+
+    // Clamp vertical look angle
+    this.pitchObject.rotation.x = Math.max(
+      -Math.PI / 2 + 0.1, // Look straight up (with small buffer to prevent flipping)
+      Math.min(Math.PI / 2 - 0.1, this.pitchObject.rotation.x) // Look straight down (with small buffer)
+    );
+  }
+
+  setMouseSensitivity(value) {
+    // Set sensitivity multiplier (1.0 = default, higher = more sensitive)
+    this.mouseLook.sensitivityMultiplier = Math.max(0.1, Math.min(5.0, value));
+    console.log(`Mouse sensitivity set to: ${this.mouseLook.sensitivityMultiplier.toFixed(2)}x`);
     
-    // Farbige Würfel in der Nähe der Kamera
-    const cubeSize = 1;
-    const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+    // Update UI if available
+    if (this.uiManager && this.uiManager.updateSettings) {
+      this.uiManager.updateSettings();
+    }
     
-    // Roter Würfel bei (0,0,0)
-    const redMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-    const redCube = new THREE.Mesh(cubeGeometry, redMaterial);
-    redCube.position.set(0, 0.5, 0);
-    this.scene.add(redCube);
-    
-    // Grüner Würfel bei (5,0,0)
-    const greenMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-    const greenCube = new THREE.Mesh(cubeGeometry, greenMaterial);
-    greenCube.position.set(5, 0.5, 0);
-    this.scene.add(greenCube);
-    
-    // Blauer Würfel bei (0,0,5)
-    const blueMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
-    const blueCube = new THREE.Mesh(cubeGeometry, blueMaterial);
-    blueCube.position.set(0, 0.5, 5);
-    this.scene.add(blueCube);
-    
-    // Große Sphere bei (0,5,0) - sollte immer sichtbar sein
-    const sphereGeometry = new THREE.SphereGeometry(2, 32, 32);
-    const yellowMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00 });
-    const sphere = new THREE.Mesh(sphereGeometry, yellowMaterial);
-    sphere.position.set(0, 3, -5);
-    this.scene.add(sphere);
-    
-    console.log("Debug objects added to scene", {
-      gridHelper: gridHelper,
-      redCube: redCube, 
-      greenCube: greenCube,
-      blueCube: blueCube,
-      sphere: sphere
-    });
+    return this.mouseLook.sensitivityMultiplier;
   }
   
-  setupMap() {
-    this.map = new Map(this, this.assetLoader);
-    this.scene.add(this.map.container);
+  toggleMouseYInversion() {
+    this.mouseLook.inverseLookY = !this.mouseLook.inverseLookY;
+    console.log(`Mouse Y inversion: ${this.mouseLook.inverseLookY ? 'ON' : 'OFF'}`);
     
-    // Debug-Informationen
-    console.log("Setup map with container:", {
-      mapContainerPosition: this.map.container.position,
-      mapContainerRotation: this.map.container.rotation,
-      mapContainerChildren: this.map.container.children.length
-    });
+    // Update UI if available
+    if (this.uiManager && this.uiManager.updateSettings) {
+      this.uiManager.updateSettings();
+    }
     
-    this.map.generate();
-    
-    // Debug nach der Map-Generierung
-    console.log("Map generated:", {
-      mapContainerChildren: this.map.container.children.length,
-      tiles: this.map.tiles.length
-    });
+    return this.mouseLook.inverseLookY;
   }
   
-  setupPlayer() {
+  setMouseSmoothing(enabled, factor = null) {
+    this.mouseLook.smoothing = enabled;
+    
+    if (factor !== null) {
+      this.mouseLook.smoothingFactor = Math.max(0, Math.min(0.95, factor));
+    }
+    
+    console.log(`Mouse smoothing: ${this.mouseLook.smoothing ? 'ON' : 'OFF'}, Factor: ${this.mouseLook.smoothingFactor.toFixed(2)}`);
+    
+    // Update UI if available
+    if (this.uiManager && this.uiManager.updateSettings) {
+      this.uiManager.updateSettings();
+    }
+    
+    return {
+      enabled: this.mouseLook.smoothing,
+      factor: this.mouseLook.smoothingFactor
+    };
+  }
+
+  applyCameraRecoil() {
+    this.currentRecoil = this.recoilAmount;
+  }
+
+  updateCameraRecoil(deltaTime) {
+    if (this.currentRecoil > 0) {
+      // Apply recoil to the camera pitch
+      this.pitchObject.rotation.x -= this.currentRecoil;
+
+      // Recover from recoil
+      this.currentRecoil -= this.recoilRecovery * deltaTime;
+      if (this.currentRecoil < 0) {
+        this.currentRecoil = 0;
+      }
+    }
+  }
+
+  updateCameraHeadBob(deltaTime) {
+    if (!this.cameraHeadBob.enabled || !this.player) return;
+
+    // Calculate player movement speed
+    const speed = Math.sqrt(
+      this.player.velocity.x * this.player.velocity.x +
+        this.player.velocity.z * this.player.velocity.z
+    );
+
+    if (speed > 0.1) {
+      // Calculate head bob based on movement
+      this.cameraHeadBob.value += deltaTime * this.cameraHeadBob.frequency;
+      const headBobOffset =
+        Math.sin(this.cameraHeadBob.value) *
+        this.cameraHeadBob.amplitude *
+        (speed / this.player.speed);
+
+      // Apply to camera position
+      this.camera.position.y = this.cameraOffset.y + headBobOffset;
+    } else {
+      // Gradually return to normal position
+      this.camera.position.y = this.cameraOffset.y;
+    }
+  }
+
+  updateCamera() {
+    if (!this.player) return;
+
+    // Update camera position to follow player
+    this.yawObject.position.copy(this.player.container.position);
+    this.yawObject.position.y += this.cameraOffset.y;
+
+    // Set camera position relative to yaw/pitch objects
+    this.camera.position.set(0, 0, 0);
+  }
+
+  async init() {
+    console.log('Initializing game');
+
+    // Load assets first
+    try {
+      await this.assetLoader.loadAssets();
+      console.log('Assets loaded successfully');
+    } catch (error) {
+      console.error('Error loading assets:', error);
+    }
+
+    // Initialize scene manager
+    this.sceneManager = new SceneManager(this);
+    
+    // Initialize texturing system
+    this.texturingSystem = new TexturingSystem(this, this.assetLoader);
+    
+    // Create city manager
+    this.cityManager = new CityManager(this, this.assetLoader);
+
+    // Create player
     this.player = new Player(this, this.assetLoader);
+    this.player.init();
+    this.player.setPosition(10, 0, 10);
     this.scene.add(this.player.container);
-  }
-  
-  setupZombieManager() {
+
+    // Initialize weapon manager
+    this.weaponManager = new WeaponManager(this, this.assetLoader);
+    this.weaponManager.init();
+
+    // Create city
+    this.city = new City(this, {
+      citySize: {
+        width: 100,
+        height: 100
+      },
+      buildings: {
+        maxHeight: 20,
+        minHeight: 5
+      }
+    });
+    
+    const cityContainer = this.city.generate();
+    this.scene.add(cityContainer);
+
+    // Initialize atmospheric effects
+    this.atmosphericEffects = new AtmosphericEffects(this, this.assetLoader);
+    this.atmosphericEffects.init();
+    this.atmosphericEffects.setPreset('dusk');
+    
+    // Create navigation grid for the city
+    this.navigationGrid = new NavigationGrid(this);
+    this.navigationGrid.generate(this.city);
+    
+    // Debug options for pathfinding
+    this.debugPathfinding = false;
+
+    // Position player at city start location
+    const playerStartPos = this.city.getPlayerStartPosition();
+    this.player.setPosition(playerStartPos.x, playerStartPos.y, playerStartPos.z);
+
+    // Create zombie manager
     this.zombieManager = new ZombieManager(this, this.assetLoader);
+    this.zombieManager.init();
+
+    // Mark interactable and collidable objects
+    this.markCollidableObjects();
+    
+    // Initialize UI
+    this.uiManager.init();
+
+    // Setup culling
+    this.setupFrustumCulling();
+
+    // Apply quality settings
+    this.applyQualitySettings();
+
+    console.log('Game initialized');
+    
+    // Trigger a resize to ensure everything is properly sized
+    this.onResize();
   }
-  
-  setupInputManager() {
-    this.inputManager = new InputManager(this);
-  }
-  
-  setupUI() {
-    this.ui = new UI(this);
-  }
-  
-  setupPixelFilter() {
-    // Pixel-Filter komplett deaktiviert
-    this.pixelFilter = null;
-  }
-  
-  setupEventListeners() {
-    // Game-specific event listeners
-  }
-  
-  onWindowResize() {
-    const aspectRatio = window.innerWidth / window.innerHeight;
-    
-    // Update camera for new aspect ratio
-    this.camera.aspect = aspectRatio;
-    this.camera.updateProjectionMatrix();
-    
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    
-    // Pixel-Filter entfernt, kein resize mehr nötig
-  }
-  
-  start() {
-    this.clock.start();
-    this.isGameOver = false;
-    this.gameState.wave = 1;
-    this.gameState.score = 0;
-    this.gameState.zombiesKilled = 0;
-    this.gameState.zombiesSpawned = 0;
-    this.isProcessingWaveCompletion = false;
-    
-    // Start spawning zombies
-    this.zombieManager.startNewWave(this.gameState.wave);
-    
-    // Update UI
-    this.ui.updateWave(this.gameState.wave);
-    this.ui.updateScore(this.gameState.score);
-  }
-  
-  update() {
-    if (this.isGameOver || this.gameState.isPaused) return;
-    
-    const deltaTime = this.clock.getDelta();
-    
-    // Aktualisiere Schatten nur alle 0.5 Sekunden oder wenn Spieler sich bewegt hat
-    this.shadowUpdateTimer = (this.shadowUpdateTimer || 0) + deltaTime;
-    if (this.shadowUpdateTimer > 0.5) {
-      this.shadowUpdateTimer = 0;
-      this.renderer.shadowMap.needsUpdate = true;
-    }
-    
-    // Update player
-    this.player.update(deltaTime);
-    
-    // Update zombies
-    this.zombieManager.update(deltaTime);
-    
-    // Update UI
-    this.ui.update(deltaTime);
-    
-    // Update camera
-    this.updateCamera(deltaTime);
-    
-    // Update map (z.B. für Wasser-Animation)
-    this.map.update(deltaTime);
-    
-    // Update culling manager
-    this.cullingManager.update(deltaTime);
-    
-    // Check if wave is complete
-    this.checkWaveCompletion();
-    
-    // Debug-Information für die ersten Frames
-    if (this.frameCount === undefined) {
-      this.frameCount = 0;
-    }
-    
-    if (this.frameCount < 10) {
-      console.log(`Frame ${this.frameCount} update:`, {
-        playerPos: this.player ? this.player.container.position.clone() : null,
-        cameraPos: this.camera.position.clone(),
-        sceneChildren: this.scene.children.length,
-        mapChildren: this.map.container.children.length
-      });
-      this.frameCount++;
-    }
-  }
-  
-  render() {
-    // Aktualisiere FPS-Zähler
-    this.updateFPSCounter();
-    
-    // Aktualisiere Matrizen vor dem Rendern
-    this.scene.updateMatrixWorld(true);
-    
-    // Stelle sicher, dass der Renderer korrekt initialisiert ist
-    this.renderer.clear();
-    
-    // Debug für die ersten Frames
-    if (this.frameCount < 10) {
-      console.log(`Frame ${this.frameCount} render:`, {
-        cameraPosition: this.camera.position.clone(),
-        cameraQuaternion: this.camera.quaternion.clone(),
-        sceneBackground: this.scene.background,
-        rendererInfo: this.renderer.info.render
-      });
-    }
-    
-    // Szene rendern
-    this.renderer.render(this.scene, this.camera);
-  }
-  
-  updateCamera(deltaTime) {
-    if (this.player) {
-      // First Person Camera - Position inside player's head
-      const playerPosition = this.player.container.position;
-      const playerRotation = this.player.container.rotation;
-      
-      // Target camera position
-      const targetPosition = new THREE.Vector3(
-        playerPosition.x,
-        playerPosition.y + 1.6, // Eye level
-        playerPosition.z
-      );
-      
-      // Target look position
-      const targetLookAt = new THREE.Vector3();
-      
-      // Erstelle einen Richtungsvektor für die Kamera
-      // Horizontale Rotation (links/rechts)
-      const directionX = Math.sin(playerRotation.y);
-      const directionZ = Math.cos(playerRotation.y);
-      
-      // Vertikale Rotation (oben/unten) - berechne den vertikalen Versatz
-      const verticalOffset = Math.tan(this.player.verticalLook);
-      
-      // Kombiniere horizontale und vertikale Blickrichtung
-      targetLookAt.x = playerPosition.x + directionX;
-      targetLookAt.y = playerPosition.y + 1.6 + verticalOffset; // Augenhöhe + vertikaler Versatz
-      targetLookAt.z = playerPosition.z + directionZ;
-      
-      // Reduziertes Smoothing für weniger Flackern
-      this.cameraPosition.lerp(targetPosition, 1.0); // Smoothing deaktiviert
-      this.cameraLookAt.lerp(targetLookAt, 1.0); // Smoothing deaktiviert
-      
-      // Apply the position to the camera
-      this.camera.position.copy(this.cameraPosition);
-      this.camera.lookAt(this.cameraLookAt);
-      
-      // Aktualisiere die Projektionsmatrix, um sicherzustellen, dass die Kamera korrekt rendert
-      this.camera.updateProjectionMatrix();
-      this.camera.updateMatrixWorld();
-    }
-  }
-  
-  checkWaveCompletion() {
-    // Verhindere mehrfache Wellenüberprüfungen, indem wir prüfen, ob bereits eine Wellenabschluss-Verarbeitung läuft
-    if (this.isProcessingWaveCompletion) {
+
+  // Mark objects in the city as collidable for collision detection
+  markCollidableObjects() {
+    if (!this.city || !this.city.container) {
+      console.warn('City not available for collision marking');
       return;
     }
 
-    if (this.zombieManager.isWaveComplete()) {
-      this.completeWave();
-    }
+    // Traverse city container and mark buildings/objects as collidable
+    this.city.container.traverse((object) => {
+      // Mark meshes as collidable
+      if (object.isMesh) {
+        // Check if it's a building or obstacle (not ground or decorative element)
+        const isGround = object.position.y < 0.5;
+        const name = object.name.toLowerCase();
+        const isDecorative = name.includes('light') || name.includes('lamp') || name.includes('decoration');
+        
+        if (!isGround && !isDecorative) {
+          object.isCollidable = true;
+          
+          // Make sure it has a bounding box for collision detection
+          if (object.geometry && !object.geometry.boundingBox) {
+            object.geometry.computeBoundingBox();
+          }
+        }
+      }
+    });
+
+    console.log('Collidable objects marked in city');
   }
-  
-  completeWave() {
-    // Increment wave
-    this.gameState.wave++;
-    this.isProcessingWaveCompletion = true;
-    
-    // Update UI
-    this.ui.updateWave(this.gameState.wave);
-    
-    // Delay next wave
-    setTimeout(() => {
-      this.prepareNextWave();
-    }, 3000);
-  }
-  
-  prepareNextWave() {
-    // Show wave message
-    this.ui.showWaveMessage(this.gameState.wave);
-    
-    // Start next wave
-    this.zombieManager.startNewWave(this.gameState.wave);
-    
-    // Reset processing flag
-    this.isProcessingWaveCompletion = false;
-  }
-  
-  addScore(points) {
-    this.gameState.score += points;
-    this.ui.updateScore(this.gameState.score);
-  }
-  
-  gameOver() {
-    this.isGameOver = true;
-    
-    // Show game over screen
-    document.getElementById('game-over').style.display = 'block';
-    document.getElementById('final-score').textContent = `Score: ${this.gameState.score}`;
-  }
-  
-  restart() {
+
+  start() {
+    this.running = true;
+    this.paused = false;
+    this.gameOver = false;
+    this.score = 0;
+
     // Reset game state
     this.gameState = {
-      isPaused: false,
-      score: 0,
-      wave: 1,
+      status: 'playing',
+      zombiesSpawned: 0,
       zombiesKilled: 0,
-      zombiesSpawned: 0
+      wave: 1,
+      score: 0,
+      difficulty: 'normal'
     };
-    
-    // Generate a new procedural map
-    this.map.regenerate();
-    
+
     // Reset player
-    this.player.reset();
+    if (this.player) {
+      this.player.reset();
+    }
+
+    // Start zombie spawning
+    this.zombieManager.startSpawning();
     
-    // Clear zombies
-    this.zombieManager.clearAllZombies();
-    
-    // Start new game
+    // Spawn ammo pickups
+    if (this.entityManager) {
+      this.entityManager.spawnAmmoPickups(8);
+    }
+
+    // Reset performance monitoring
+    this.performanceMonitor.reset();
+
+    // Start game loop
+    this.lastTime = performance.now();
+    this.animate();
+  }
+
+  onResize() {
+    this.width = window.innerWidth;
+    this.height = window.innerHeight;
+
+    this.camera.aspect = this.width / this.height;
+    this.camera.updateProjectionMatrix();
+
+    this.renderer.setSize(this.width, this.height);
+  }
+
+  pause() {
+    if (!this.paused) {
+      this.paused = true;
+
+      // Show pause UI
+      this.uiManager.showPauseMenu();
+    }
+  }
+
+  unpause() {
+    if (this.paused) {
+      this.paused = false;
+
+      // Hide pause UI
+      this.uiManager.hidePauseMenu();
+
+      // Reset timing to prevent huge delta time after unpausing
+      this.lastTime = performance.now();
+    }
+  }
+
+  togglePause() {
+    if (this.paused) {
+      this.unpause();
+      this.requestPointerLock();
+    } else {
+      this.pause();
+    }
+  }
+
+  gameOverState() {
+    this.gameOver = true;
+    this.running = false;
+    this.zombieManager.stopSpawning();
+
+    // Show game over UI
+    this.uiManager.showGameOverMenu(this.score);
+
+    // Release pointer lock
+    document.exitPointerLock();
+  }
+
+  restart() {
     this.start();
+
+    // Request pointer lock again
+    this.requestPointerLock();
   }
-  
-  setupCullingManager() {
-    // Erstelle und initialisiere den CullingManager
-    this.cullingManager = new CullingManager(this);
-    this.cullingManager.init();
-    
-    // Debug-Modus kann über URL-Parameter aktiviert werden
-    if (window.location.search.includes('debug=true')) {
-      this.cullingManager.setDebugMode(true);
-    }
-    
-    console.log("Culling Manager initialized");
-  }
-  
-  // FPS-Zähler einrichten
-  setupFPSCounter() {
-    // Erstelle das FPS-Anzeigeelement
-    const fpsElement = document.createElement('div');
-    fpsElement.id = 'fps-counter';
-    fpsElement.style.position = 'fixed';
-    fpsElement.style.top = '10px';
-    fpsElement.style.right = '10px';
-    fpsElement.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    fpsElement.style.color = '#0f0'; // Grüner Text
-    fpsElement.style.padding = '5px 10px';
-    fpsElement.style.borderRadius = '3px';
-    fpsElement.style.fontFamily = 'monospace';
-    fpsElement.style.fontSize = '16px';
-    fpsElement.style.zIndex = '1000'; // Über allem anderen
-    document.body.appendChild(fpsElement);
-    
-    this.fpsCounter.element = fpsElement;
-    this.fpsCounter.lastTime = performance.now();
-  }
-  
-  // FPS-Zähler aktualisieren
-  updateFPSCounter() {
-    // Frames zählen
+
+  updateFPS(deltaTime) {
     this.fpsCounter.frames++;
-    
-    // Aktuelle Zeit
-    const currentTime = performance.now();
-    const elapsed = currentTime - this.fpsCounter.lastTime;
-    
-    // FPS-Wert berechnen und anzeigen, wenn das Intervall erreicht ist
-    if (elapsed >= this.fpsCounter.updateInterval) {
-      this.fpsCounter.fps = Math.round((this.fpsCounter.frames * 1000) / elapsed);
-      
-      // Zusätzliche Performance-Statistiken
-      let rendererStats = '';
-      if (this.renderer && this.renderer.info) {
-        const info = this.renderer.info;
-        rendererStats = `
-          <br>Geometrien: ${info.memory.geometries}
-          <br>Texturen: ${info.memory.textures}
-          <br>Dreiecke: ${info.render.triangles}
-          <br>Calls: ${info.render.calls}
-        `;
-      }
-      
-      // FPS anzeigen
-      this.fpsCounter.element.innerHTML = `FPS: ${this.fpsCounter.fps}${rendererStats}`;
-      
-      // Zurücksetzen
+
+    // Update FPS counter every second
+    if (performance.now() - this.fpsCounter.lastTime > 1000) {
+      this.fpsCounter.value = Math.round(
+        (this.fpsCounter.frames * 1000) / (performance.now() - this.fpsCounter.lastTime)
+      );
       this.fpsCounter.frames = 0;
-      this.fpsCounter.lastTime = currentTime;
+      this.fpsCounter.lastTime = performance.now();
+
+      // Update UI
+      this.uiManager.updateFPS(this.fpsCounter.value);
     }
   }
-} 
+
+  update(deltaTime) {
+    if (this.paused || this.gameOver) return;
+
+    // Record frame start time for performance monitoring
+    const frameStartTime = performance.now();
+
+    // Update FPS counter
+    this.updateFPS(deltaTime);
+
+    // Update camera effects like head bob and recoil
+    this.updateCameraRecoil(deltaTime);
+    if (this.player && this.player.isMoving && this.cameraHeadBob.enabled) {
+      this.updateCameraHeadBob(deltaTime);
+    }
+    this.updateCamera();
+
+    // Update mouse look smoothing
+    this.updateMouseLook(deltaTime);
+
+    // Update player
+    if (this.player) {
+      this.player.update(deltaTime);
+    }
+
+    // Update zombie manager
+    if (this.zombieManager) {
+      this.zombieManager.update(deltaTime);
+    }
+
+    // Update entity manager
+    if (this.entityManager) {
+      this.entityManager.update(deltaTime);
+    }
+
+    // Update atmospheric effects
+    if (this.atmosphericEffects) {
+      this.atmosphericEffects.update(deltaTime);
+    }
+
+    // Update culling manager to hide objects outside view frustum
+    if (this.settings.cullingEnabled && this.cullingManager) {
+      this.cullingManager.update(this.camera);
+    }
+
+    // Record performance metrics
+    if (this.performanceMonitor) {
+      const frameEndTime = performance.now();
+      const frameDuration = frameEndTime - frameStartTime;
+      this.performanceMonitor.recordFrameTime(frameDuration);
+      this.performanceMonitor.update();
+    }
+
+    // Render scene
+    this.render();
+  }
+
+  animate() {
+    // Schedule next frame
+    this.frameTiming.frameId = requestAnimationFrame(this.animate.bind(this));
+
+    // Get current time
+    const now = performance.now();
+
+    // Calculate deltaTime in seconds (cap at 100ms to avoid huge jumps)
+    const deltaTime = Math.min((now - this.lastTime) / 1000, 0.1);
+    this.lastTime = now;
+
+    // Store actual frame timing for performance monitor
+    this.frameTiming.deltaTime = deltaTime;
+
+    // Check if we need to limit FPS
+    if (this.settings.limitFPS) {
+      const frameTime = now - this.frameTiming.frameStartTime;
+
+      // If frame processed too quickly, delay to maintain target FPS
+      if (frameTime < this.frameTiming.frameTimeTarget) {
+        // Skip rendering this frame and wait until next one
+        return;
+      }
+
+      // Update frame start time for next limit check
+      this.frameTiming.frameStartTime = now;
+    }
+
+    // Reset renderer info for new frame
+    this.renderer.info.reset();
+
+    // Update game state
+    this.update(deltaTime);
+
+    // Render scene
+    this.render();
+  }
+
+  render() {
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  // Performance toggles
+
+  togglePerformanceSettings() {
+    // Switch between quality levels
+    const levels = ['low', 'medium', 'high'];
+    const currentIndex = levels.indexOf(this.settings.qualityLevel);
+    const nextIndex = (currentIndex + 1) % levels.length;
+    this.settings.qualityLevel = levels[nextIndex];
+
+    // Apply quality settings
+    this.applyQualitySettings();
+
+    // Display quality change
+    console.log(`Quality set to: ${this.settings.qualityLevel}`);
+  }
+
+  applyQualitySettings() {
+    console.log(`Applying quality settings: ${this.settings.qualityLevel}`);
+    
+    // Apply settings based on quality level
+    switch (this.settings.qualityLevel) {
+      case 'low':
+        this.renderer.setPixelRatio(Math.min(1, window.devicePixelRatio));
+        this.renderer.shadowMap.enabled = false;
+        this.settings.shadows = false;
+        this.settings.postProcessing = false;
+        this.settings.cullingEnabled = true;
+        if (this.texturingSystem) {
+          this.texturingSystem.updateTextureQuality('low');
+        }
+        break;
+        
+      case 'medium':
+        this.renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio));
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFShadowMap;
+        this.settings.shadows = true;
+        this.settings.postProcessing = true;
+        this.settings.cullingEnabled = true;
+        if (this.texturingSystem) {
+          this.texturingSystem.updateTextureQuality('medium');
+        }
+        break;
+        
+      case 'high':
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.settings.shadows = true;
+        this.settings.postProcessing = true;
+        this.settings.cullingEnabled = true;
+        if (this.texturingSystem) {
+          this.texturingSystem.updateTextureQuality('high');
+        }
+        break;
+    }
+    
+    // Apply post-processing if enabled
+    if (this.settings.postProcessing && this.composer) {
+      this.pixelFilter.setEnabled(true);
+    } else if (this.pixelFilter) {
+      this.pixelFilter.setEnabled(false);
+    }
+    
+    // Apply culling settings
+    if (this.cullingManager) {
+      this.cullingManager.setEnabled(this.settings.cullingEnabled);
+    }
+    
+    // Update materials
+    this.scene.traverse((object) => {
+      if (object.isMesh && object.material) {
+        if (Array.isArray(object.material)) {
+          object.material.forEach(material => {
+            material.needsUpdate = true;
+          });
+        } else {
+          object.material.needsUpdate = true;
+        }
+        
+        if (this.settings.shadows) {
+          object.castShadow = true;
+          object.receiveShadow = true;
+        } else {
+          object.castShadow = false;
+          object.receiveShadow = false;
+        }
+      }
+    });
+    
+    console.log('Quality settings applied');
+  }
+
+  setFrameLimit(enabled, targetFPS = 60) {
+    this.settings.limitFPS = enabled;
+    this.settings.targetFPS = targetFPS;
+    this.frameTiming.frameTimeTarget = 1000 / targetFPS;
+  }
+
+  dispose() {
+    console.log('Disposing game resources...');
+
+    // Stop the animation loop
+    if (this.frameTiming.frameId !== null) {
+      cancelAnimationFrame(this.frameTiming.frameId);
+      this.frameTiming.frameId = null;
+    }
+
+    // Dispose atmospheric effects
+    if (this.atmosphericEffects) {
+      this.atmosphericEffects.dispose();
+      this.atmosphericEffects = null;
+    }
+
+    // Dispose of city resources
+    if (this.city) {
+      this.city.dispose();
+      this.city = null;
+    }
+
+    // Dispose of player resources
+    if (this.player) {
+      this.player.dispose();
+      this.player = null;
+    }
+
+    // Dispose of zombie manager
+    if (this.zombieManager) {
+      this.zombieManager.dispose();
+      this.zombieManager = null;
+    }
+
+    // Dispose of entity manager
+    if (this.entityManager) {
+      this.entityManager.dispose();
+      this.entityManager = null;
+    }
+
+    // Remove event listeners
+    window.removeEventListener('resize', this.onResize);
+    document.removeEventListener('pointerlockchange', this.onPointerLockChange);
+    document.removeEventListener('pointerlockerror', this.onPointerLockError);
+    document.removeEventListener('mousemove', this.onMouseMove);
+
+    console.log('Game resources disposed');
+  }
+
+  // Setup game systems
+  setupSystems() {
+    // Setup asset loader
+    this.assetLoader = new AssetLoader();
+
+    // Setup managers that depend on assetLoader
+    this.sceneManager = new SceneManager(this, this.assetLoader);
+    this.cityManager = new CityManager(this, this.assetLoader);
+    this.zombieManager = new ZombieManager(this, this.assetLoader);
+    this.weaponManager = new WeaponManager(this, this.assetLoader);
+    this.uiManager = new UiManager(this, this.assetLoader);
+    this.soundManager = new SoundManager(this, this.assetLoader);
+
+    // Setup frustum culling (for zombie optimization)
+    this.setupFrustumCulling();
+    
+    // Initialize gameState object for tracking game progress
+    this.gameState = {
+      status: 'idle', // 'idle', 'playing', 'gameover', 'paused'
+      zombiesSpawned: 0,
+      zombiesKilled: 0,
+      wave: 1,
+      score: 0,
+      difficulty: 'normal' // 'easy', 'normal', 'hard'
+    };
+  }
+  
+  // Setup frustum culling for performance optimization
+  setupFrustumCulling() {
+    this.frustum = new THREE.Frustum();
+    this.frustumMatrix = new THREE.Matrix4();
+  }
+
+  // Main update loop
+  update(time) {
+    // Calculate delta time
+    const delta = this.clock.getDelta();
+    
+    // Update frustum for culling distant zombies
+    this.updateFrustum();
+
+    // Update player if it exists
+    if (this.player) {
+      this.player.update(delta);
+    }
+
+    // Update game systems based on game state
+    if (this.gameState.status === 'playing') {
+      // Update city
+      if (this.cityManager) {
+        this.cityManager.update(delta);
+      }
+
+      // Update zombies
+      if (this.zombieManager) {
+        this.zombieManager.update(delta);
+      }
+
+      // Update weapons
+      if (this.weaponManager) {
+        this.weaponManager.update(delta);
+      }
+
+      // Update UI
+      if (this.uiManager) {
+        this.uiManager.update(delta);
+      }
+
+      // Update sounds
+      if (this.soundManager) {
+        this.soundManager.update(delta);
+      }
+    }
+
+    // Render scene
+    this.render();
+
+    // Schedule next frame
+    requestAnimationFrame(this.update.bind(this));
+  }
+
+  // Update frustum for culling
+  updateFrustum() {
+    if (!this.camera) return;
+    
+    // Update the frustum culling matrix
+    this.frustumMatrix.multiplyMatrices(
+      this.camera.projectionMatrix,
+      this.camera.matrixWorldInverse
+    );
+    this.frustum.setFromProjectionMatrix(this.frustumMatrix);
+  }
+
+  /**
+   * Toggle pathfinding debug visualization
+   * Shows/hides the navigation grid and zombie paths
+   */
+  togglePathfindingDebug() {
+    this.debugPathfinding = !this.debugPathfinding;
+    
+    // Toggle navigation grid visualization
+    if (this.navigationGrid) {
+      this.navigationGrid.toggleDebug();
+    }
+    
+    // Refresh zombie path visualization
+    if (this.zombieManager && this.zombieManager.zombies) {
+      for (const zombie of this.zombieManager.zombies) {
+        if (this.debugPathfinding) {
+          zombie.visualizePath();
+        } else {
+          // Clear visualization
+          for (const marker of zombie.debugPathMarkers) {
+            this.scene.remove(marker);
+          }
+          
+          if (zombie.debugPathLine) {
+            this.scene.remove(zombie.debugPathLine);
+          }
+          
+          zombie.debugPathMarkers = [];
+          zombie.debugPathLine = null;
+        }
+      }
+    }
+    
+    console.log(`Pathfinding debug ${this.debugPathfinding ? 'enabled' : 'disabled'}`);
+    return this.debugPathfinding;
+  }
+}

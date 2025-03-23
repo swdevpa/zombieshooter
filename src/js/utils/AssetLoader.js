@@ -5,51 +5,209 @@ export class AssetLoader {
     this.textures = {};
     this.models = {};
     this.sounds = {};
-    
+
     // Canvas size für alle Texturen
     this.textureSize = 128;
+
+    // Asset loading tracking
+    this.totalAssets = 0;
+    this.loadedAssets = 0;
+    this.loadingErrors = [];
+
+    // Cache management
+    this.textureCache = new Map();
+    this.modelCache = new Map();
+    this.soundCache = new Map();
   }
-  
+
   async loadAssets() {
     try {
+      console.log('Starting asset loading process...');
+      this.loadingErrors = [];
+      this.loadedAssets = 0;
+
+      // Register event for loading progress updates
+      const progressElement = document.getElementById('loading-progress');
+      if (progressElement) {
+        this._updateProgressUI(0, 'Initializing...');
+      }
+
       // Erstelle alle Texturen programmatisch statt sie zu laden
       await this.createTextures();
+
+      // In the future, we can add more asset types here
+      // await this.loadModels();
+      // await this.loadSounds();
+
+      if (this.loadingErrors.length > 0) {
+        console.warn(
+          `Asset loading completed with ${this.loadingErrors.length} errors:`,
+          this.loadingErrors
+        );
+      } else {
+        console.log('All assets loaded successfully!');
+      }
+
+      // Final progress update
+      if (progressElement) {
+        this._updateProgressUI(100, 'Complete!');
+      }
+
       return true;
     } catch (error) {
+      console.error('Critical error during asset loading:', error);
+      this.loadingErrors.push({
+        type: 'critical',
+        message: error.message,
+        stack: error.stack,
+      });
+
+      // Update UI with error
+      const progressElement = document.getElementById('loading-progress');
+      if (progressElement) {
+        this._updateProgressUI(-1, `Error: ${error.message}`);
+      }
+
       return false;
     }
   }
-  
+
+  _updateProgressUI(percentage, message) {
+    const progressElement = document.getElementById('loading-progress');
+    if (!progressElement) return;
+
+    if (percentage < 0) {
+      // Error state
+      progressElement.innerHTML = `<div class="error">${message}</div>`;
+      progressElement.style.color = 'red';
+    } else {
+      progressElement.textContent = `${message} (${Math.floor(percentage)}%)`;
+
+      // If there's a progress bar element, update it
+      const progressBarElement = document.getElementById('loading-bar-progress');
+      if (progressBarElement) {
+        progressBarElement.style.width = `${percentage}%`;
+      }
+    }
+  }
+
   async createTextures() {
     const startTime = performance.now();
-    
-    // Erstelle alle Texturen
-    this.createPlayerTexture();
-    this.createPlayerHeadTexture();
-    this.createWeaponTexture();
-    this.createGrassTexture();
-    this.createWaterTexture();
-    this.createDirtTexture();
-    this.createStoneTexture();
-    this.createWallTexture();
-    this.createWoodTexture();
-    this.createTreeTexture();
-    this.createZombieTexture();
-    this.createZombieHeadTexture();
-    this.createBulletTexture();
-    this.createGroundTexture();
-    this.createPathTexture();
-    
-    const endTime = performance.now();
-    
-    // Setze Eigenschaften für alle Texturen
-    this.setupTextureProperties();
-    
-    console.log("All textures created programmatically:", Object.keys(this.textures));
-    
-    return true;
+
+    // Count total textures for progress tracking
+    this.totalAssets = 15; // Current number of texture generation methods
+
+    try {
+      // Create all textures with progress tracking
+      await this._createTextureWithProgress('player', this.createPlayerTexture.bind(this));
+      await this._createTextureWithProgress('playerHead', this.createPlayerHeadTexture.bind(this));
+      await this._createTextureWithProgress('weapon', this.createWeaponTexture.bind(this));
+      await this._createTextureWithProgress('grass', this.createGrassTexture.bind(this));
+      await this._createTextureWithProgress('water', this.createWaterTexture.bind(this));
+      await this._createTextureWithProgress('dirt', this.createDirtTexture.bind(this));
+      await this._createTextureWithProgress('stone', this.createStoneTexture.bind(this));
+      await this._createTextureWithProgress('wall', this.createWallTexture.bind(this));
+      await this._createTextureWithProgress('wood', this.createWoodTexture.bind(this));
+      await this._createTextureWithProgress('tree', this.createTreeTexture.bind(this));
+      await this._createTextureWithProgress('zombie', this.createZombieTexture.bind(this));
+      await this._createTextureWithProgress('zombieHead', this.createZombieHeadTexture.bind(this));
+      await this._createTextureWithProgress('bullet', this.createBulletTexture.bind(this));
+      await this._createTextureWithProgress('ground', this.createGroundTexture.bind(this));
+      await this._createTextureWithProgress('path', this.createPathTexture.bind(this));
+
+      const endTime = performance.now();
+
+      // Setze Eigenschaften für alle Texturen
+      this.setupTextureProperties();
+
+      console.log(
+        `All textures created programmatically in ${(endTime - startTime).toFixed(2)}ms:`,
+        Object.keys(this.textures)
+      );
+
+      return true;
+    } catch (error) {
+      console.error('Error creating textures:', error);
+      this.loadingErrors.push({
+        type: 'textures',
+        message: error.message,
+        stack: error.stack,
+      });
+
+      return false;
+    }
   }
-  
+
+  async _createTextureWithProgress(name, createFn) {
+    try {
+      // Update progress UI
+      this._updateProgressUI(
+        (this.loadedAssets / this.totalAssets) * 100,
+        `Creating ${name} texture...`
+      );
+
+      // Allow a small delay for the UI to update
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Create the texture
+      createFn();
+
+      // Track progress
+      this.loadedAssets++;
+
+      // Return the texture
+      return this.textures[name];
+    } catch (error) {
+      console.error(`Error creating ${name} texture:`, error);
+      this.loadingErrors.push({
+        type: 'texture',
+        name: name,
+        message: error.message,
+        stack: error.stack,
+      });
+
+      // Create a fallback texture
+      this.createFallbackTexture(name);
+
+      // Still increment the counter to maintain progress
+      this.loadedAssets++;
+
+      return this.textures[name];
+    }
+  }
+
+  // Fallback texture for error cases
+  createFallbackTexture(name) {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+
+    // Clear background to purple (error color)
+    ctx.fillStyle = '#9b59b6';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Add error pattern
+    ctx.fillStyle = '#8e44ad';
+    for (let y = 0; y < canvas.height; y += 16) {
+      for (let x = 0; x < canvas.width; x += 16) {
+        if ((x + y) % 32 === 0) {
+          ctx.fillRect(x, y, 16, 16);
+        }
+      }
+    }
+
+    // Add error text
+    ctx.fillStyle = 'white';
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('ERROR', canvas.width / 2, canvas.height / 2);
+    ctx.fillText(name, canvas.width / 2, canvas.height / 2 + 20);
+
+    this.textures[name] = new THREE.CanvasTexture(canvas);
+    return this.textures[name];
+  }
+
   setupTextureProperties() {
     // Setze Eigenschaften für alle Texturen
     for (const textureName in this.textures) {
@@ -61,122 +219,147 @@ export class AssetLoader {
       texture.needsUpdate = true;
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.flipY = false; // THREE.js Canvas Texturen sind standardmäßig umgekehrt
-      
+
       // Debug-Ausgabe zur Überprüfung der Textur
       console.log(`Created texture: ${textureName}`, texture);
     }
   }
-  
+
   // Player Textur
   createPlayerTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Hintergrund löschen (transparent)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     // Körper (blau)
     ctx.fillStyle = '#3498db';
     ctx.fillRect(canvas.width * 0.2, canvas.height * 0.3, canvas.width * 0.6, canvas.height * 0.7);
-    
+
     // Arme
     ctx.fillRect(canvas.width * 0.1, canvas.height * 0.3, canvas.width * 0.1, canvas.height * 0.5);
     ctx.fillRect(canvas.width * 0.8, canvas.height * 0.3, canvas.width * 0.1, canvas.height * 0.5);
-    
+
     // Schattierung
     ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
     ctx.fillRect(canvas.width * 0.6, canvas.height * 0.3, canvas.width * 0.2, canvas.height * 0.7);
-    
+
     // Kopf wird separat gerendert
-    
+
     this.textures['player'] = new THREE.CanvasTexture(canvas);
     return this.textures['player'];
   }
-  
+
   // Player Kopf Textur
   createPlayerHeadTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Hintergrund löschen (transparent)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     // Gesicht (hautfarben)
     ctx.fillStyle = '#f1c40f';
-    ctx.fillRect(canvas.width * 0.25, canvas.height * 0.25, canvas.width * 0.5, canvas.height * 0.5);
-    
+    ctx.fillRect(
+      canvas.width * 0.25,
+      canvas.height * 0.25,
+      canvas.width * 0.5,
+      canvas.height * 0.5
+    );
+
     // Augen
     ctx.fillStyle = '#2c3e50';
-    ctx.fillRect(canvas.width * 0.35, canvas.height * 0.35, canvas.width * 0.1, canvas.height * 0.1);
-    ctx.fillRect(canvas.width * 0.55, canvas.height * 0.35, canvas.width * 0.1, canvas.height * 0.1);
-    
+    ctx.fillRect(
+      canvas.width * 0.35,
+      canvas.height * 0.35,
+      canvas.width * 0.1,
+      canvas.height * 0.1
+    );
+    ctx.fillRect(
+      canvas.width * 0.55,
+      canvas.height * 0.35,
+      canvas.width * 0.1,
+      canvas.height * 0.1
+    );
+
     // Mund
     ctx.fillStyle = '#e74c3c';
     ctx.fillRect(canvas.width * 0.4, canvas.height * 0.5, canvas.width * 0.2, canvas.height * 0.05);
-    
+
     // Schattierung
     ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
-    ctx.fillRect(canvas.width * 0.5, canvas.height * 0.25, canvas.width * 0.25, canvas.height * 0.5);
-    
+    ctx.fillRect(
+      canvas.width * 0.5,
+      canvas.height * 0.25,
+      canvas.width * 0.25,
+      canvas.height * 0.5
+    );
+
     this.textures['playerHead'] = new THREE.CanvasTexture(canvas);
     return this.textures['playerHead'];
   }
-  
+
   // Waffen Textur
   createWeaponTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Hintergrund löschen (transparent)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     // Waffe (grau)
     ctx.fillStyle = '#7f8c8d';
     ctx.fillRect(canvas.width * 0.4, canvas.height * 0.2, canvas.width * 0.2, canvas.height * 0.7);
-    
+
     // Waffengriff
     ctx.fillStyle = '#2c3e50';
     ctx.fillRect(canvas.width * 0.4, canvas.height * 0.7, canvas.width * 0.2, canvas.height * 0.2);
-    
+
     // Schattierung
     ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
     ctx.fillRect(canvas.width * 0.5, canvas.height * 0.2, canvas.width * 0.1, canvas.height * 0.7);
-    
+
     // Highlights
     ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.fillRect(canvas.width * 0.42, canvas.height * 0.22, canvas.width * 0.05, canvas.height * 0.65);
-    
+    ctx.fillRect(
+      canvas.width * 0.42,
+      canvas.height * 0.22,
+      canvas.width * 0.05,
+      canvas.height * 0.65
+    );
+
     this.textures['weapon'] = new THREE.CanvasTexture(canvas);
     return this.textures['weapon'];
   }
-  
+
   // Gras Textur
   createGrassTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Basis-Grasfarbe
     ctx.fillStyle = '#2ecc71';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+
     // Grasmuster hinzufügen
     for (let i = 0; i < 100; i++) {
       const x = Math.random() * canvas.width;
       const y = Math.random() * canvas.height;
       const size = 2 + Math.random() * 4;
-      
+
       ctx.fillStyle = Math.random() > 0.5 ? '#27ae60' : '#3498db';
       ctx.fillRect(x, y, size, size);
     }
-    
+
     // Textur aufrauen
     for (let y = 0; y < canvas.height; y += 4) {
       for (let x = 0; x < canvas.width; x += 4) {
@@ -187,114 +370,114 @@ export class AssetLoader {
         }
       }
     }
-    
+
     this.textures['grass'] = new THREE.CanvasTexture(canvas);
     return this.textures['grass'];
   }
-  
+
   // Wasser Textur
   createWaterTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Basis-Wasserfarbe
     ctx.fillStyle = '#3498db';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+
     // Wasserwellen hinzufügen
     for (let i = 0; i < 50; i++) {
       const x = Math.random() * canvas.width;
       const y = Math.random() * canvas.height;
       const width = 10 + Math.random() * 20;
       const height = 2 + Math.random() * 4;
-      
+
       ctx.fillStyle = 'rgba(52, 152, 219, 0.5)';
       ctx.beginPath();
       ctx.ellipse(x, y, width, height, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     // Highlights/Glitzer
     for (let i = 0; i < 30; i++) {
       const x = Math.random() * canvas.width;
       const y = Math.random() * canvas.height;
       const size = 1 + Math.random() * 2;
-      
+
       ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     this.textures['water'] = new THREE.CanvasTexture(canvas);
     return this.textures['water'];
   }
-  
+
   // Erde Textur
   createDirtTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Basis-Erdfarbe
     ctx.fillStyle = '#795548';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+
     // Erde-Texturen hinzufügen
     for (let i = 0; i < 200; i++) {
       const x = Math.random() * canvas.width;
       const y = Math.random() * canvas.height;
       const size = 1 + Math.random() * 3;
       const color = Math.random() > 0.5 ? '#5D4037' : '#8D6E63';
-      
+
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     this.textures['dirt'] = new THREE.CanvasTexture(canvas);
     return this.textures['dirt'];
   }
-  
+
   // Stein Textur
   createStoneTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Basis-Steinfarbe
     ctx.fillStyle = '#7f8c8d';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+
     // Steinmuster
     for (let y = 0; y < canvas.height; y += 16) {
       for (let x = 0; x < canvas.width; x += 32) {
-        const offsetX = (y % 32 === 0) ? 0 : 16;
+        const offsetX = y % 32 === 0 ? 0 : 16;
         const width = 30;
         const height = 14;
-        
+
         ctx.fillStyle = Math.random() > 0.5 ? '#95a5a6' : '#7f8c8d';
         ctx.fillRect(x + offsetX, y, width, height);
-        
+
         // Steinrahmen
         ctx.strokeStyle = '#6c7a7a';
         ctx.lineWidth = 1;
         ctx.strokeRect(x + offsetX, y, width, height);
       }
     }
-    
+
     // Risse im Stein
     for (let i = 0; i < 10; i++) {
       const x = Math.random() * canvas.width;
       const y = Math.random() * canvas.height;
       const length = 5 + Math.random() * 15;
       const angle = Math.random() * Math.PI * 2;
-      
+
       ctx.strokeStyle = '#6c7a7a';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -302,60 +485,60 @@ export class AssetLoader {
       ctx.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length);
       ctx.stroke();
     }
-    
+
     this.textures['stone'] = new THREE.CanvasTexture(canvas);
     return this.textures['stone'];
   }
-  
+
   // Wand Textur
   createWallTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Basis-Wandfarbe
     ctx.fillStyle = '#bdc3c7';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+
     // Backsteinmuster
     const brickHeight = 16;
     const brickWidth = 32;
-    
+
     for (let y = 0; y < canvas.height; y += brickHeight) {
       const offset = (Math.floor(y / brickHeight) % 2) * (brickWidth / 2);
-      
+
       for (let x = 0; x < canvas.width; x += brickWidth) {
         // Variiere die Steinfarbe leicht
         const r = 180 + Math.floor(Math.random() * 30);
         const g = 120 + Math.floor(Math.random() * 30);
         const b = 100 + Math.floor(Math.random() * 30);
-        
+
         ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
         ctx.fillRect(x + offset, y, brickWidth - 2, brickHeight - 2);
-        
+
         // Mörtel
         ctx.fillStyle = '#95a5a6';
         ctx.fillRect(x + offset, y + brickHeight - 2, brickWidth - 2, 2);
         ctx.fillRect(x + offset + brickWidth - 2, y, 2, brickHeight - 2);
       }
     }
-    
+
     this.textures['wall'] = new THREE.CanvasTexture(canvas);
     return this.textures['wall'];
   }
-  
+
   // Holz Textur
   createWoodTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Hintergrund - Basisfarbe für Holz
     ctx.fillStyle = '#8B4513'; // Grundfarbe für Holz (SaddleBrown)
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+
     // Woodgrain-Effekt durch wellenförmige Linien erzeugen
     for (let i = 0; i < 20; i++) {
       // Amplitude der Wellen (Stärke der Holzmaserung)
@@ -366,7 +549,7 @@ export class AssetLoader {
       const offset = Math.random() * canvas.height;
       // Breite der Maserung
       const lineWidth = 1 + Math.random() * 3;
-      
+
       // Farbe der Maserung - leicht variieren für realistischeren Look
       const brightness = 0.7 + Math.random() * 0.3; // 70-100% Helligkeit
       const r = Math.floor(139 * brightness); // Basis ist RGB von SaddleBrown (139, 69, 19)
@@ -374,10 +557,10 @@ export class AssetLoader {
       const b = Math.floor(19 * brightness);
       ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.7)`;
       ctx.lineWidth = lineWidth;
-      
+
       // Zeichne gewellte Linie für Maserungseffekt
       ctx.beginPath();
-      
+
       for (let x = 0; x < canvas.width; x++) {
         const y = offset + amplitude * Math.sin(x * frequency);
         if (x === 0) {
@@ -386,84 +569,88 @@ export class AssetLoader {
           ctx.lineTo(x, y);
         }
       }
-      
+
       ctx.stroke();
     }
-    
+
     // Knoteneffekte im Holz hinzufügen
     for (let i = 0; i < 3; i++) {
       const x = Math.random() * canvas.width;
       const y = Math.random() * canvas.height;
       const radius = 5 + Math.random() * 10;
-      
+
       // Dunklerer Außenring
       const darkGradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
       darkGradient.addColorStop(0, 'rgba(80, 40, 10, 0.1)');
       darkGradient.addColorStop(0.7, 'rgba(80, 40, 10, 0.8)');
       darkGradient.addColorStop(1, 'rgba(80, 40, 10, 0)');
-      
+
       ctx.fillStyle = darkGradient;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
-      
+
       // Hellerer Innenring
       const lightGradient = ctx.createRadialGradient(x, y, 0, x, y, radius * 0.6);
       lightGradient.addColorStop(0, 'rgba(160, 100, 50, 0.8)');
       lightGradient.addColorStop(1, 'rgba(160, 100, 50, 0)');
-      
+
       ctx.fillStyle = lightGradient;
       ctx.beginPath();
       ctx.arc(x, y, radius * 0.6, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     // Rinde-ähnliche Textur durch vertikale unregelmäßige Linien
     for (let i = 0; i < 30; i++) {
       const x = Math.random() * canvas.width;
       const length = 5 + Math.random() * 30;
       const width = 1 + Math.random() * 3;
-      
+
       ctx.strokeStyle = `rgba(50, 25, 0, ${0.3 + Math.random() * 0.3})`;
       ctx.lineWidth = width;
-      
+
       ctx.beginPath();
       ctx.moveTo(x, Math.random() * canvas.height);
       ctx.lineTo(x + (Math.random() * 10 - 5), Math.random() * canvas.height);
       ctx.stroke();
     }
-    
+
     this.textures['wood'] = new THREE.CanvasTexture(canvas);
     this.textures['wood'].wrapS = THREE.RepeatWrapping;
     this.textures['wood'].wrapT = THREE.RepeatWrapping;
     return this.textures['wood'];
   }
-  
+
   // Baum Textur
   createTreeTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Hintergrund löschen (transparent)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     // Gradient für realistischeres Grün
     const foliageGradient = ctx.createRadialGradient(
-      canvas.width * 0.5, canvas.height * 0.3, 0,
-      canvas.width * 0.5, canvas.height * 0.3, canvas.width * 0.5
+      canvas.width * 0.5,
+      canvas.height * 0.3,
+      0,
+      canvas.width * 0.5,
+      canvas.height * 0.3,
+      canvas.width * 0.5
     );
     foliageGradient.addColorStop(0, '#2ecc71'); // Helles Grün in der Mitte
     foliageGradient.addColorStop(0.7, '#27ae60'); // Mittleres Grün
     foliageGradient.addColorStop(1, '#145a32'); // Dunkles Grün an den Rändern
-    
+
     // Zeichne ein reichhaltigeres Blattmuster
     ctx.fillStyle = foliageGradient;
     ctx.beginPath();
     ctx.arc(canvas.width * 0.5, canvas.height * 0.3, canvas.width * 0.3, 0, Math.PI * 2);
     ctx.fill();
-    
+
     // Füge etwas Textur und Details hinzu
     for (let i = 0; i < 300; i++) {
       // Zufällige Position innerhalb des Baumes
@@ -471,18 +658,16 @@ export class AssetLoader {
       const distance = Math.random() * canvas.width * 0.3;
       const x = canvas.width * 0.5 + Math.cos(angle) * distance;
       const y = canvas.height * 0.3 + Math.sin(angle) * distance;
-      
+
       // Abwechselnd hellere und dunklere Punkte für Textur
-      const shade = Math.random() > 0.5 ? 
-        'rgba(255, 255, 255, 0.1)' : 
-        'rgba(0, 0, 0, 0.1)';
-      
+      const shade = Math.random() > 0.5 ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+
       ctx.fillStyle = shade;
       ctx.beginPath();
       ctx.arc(x, y, 1 + Math.random() * 2, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     // Zeichne einige dunklere Bereiche für Tiefe
     for (let i = 0; i < 8; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -490,13 +675,13 @@ export class AssetLoader {
       const x = canvas.width * 0.5 + Math.cos(angle) * distance;
       const y = canvas.height * 0.3 + Math.sin(angle) * distance;
       const size = 5 + Math.random() * 15;
-      
+
       ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     // Zeichne einige hellere Bereiche für Sonnenlicht
     for (let i = 0; i < 5; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -504,153 +689,198 @@ export class AssetLoader {
       const x = canvas.width * 0.5 + Math.cos(angle) * distance;
       const y = canvas.height * 0.3 + Math.sin(angle) * distance;
       const size = 5 + Math.random() * 10;
-      
+
       ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     this.textures['tree'] = new THREE.CanvasTexture(canvas);
     this.textures['tree'].wrapS = THREE.RepeatWrapping;
     this.textures['tree'].wrapT = THREE.RepeatWrapping;
     return this.textures['tree'];
   }
-  
+
   // Zombie Textur
   createZombieTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Hintergrund löschen (transparent)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     // Körper (grün)
     ctx.fillStyle = '#2ecc71';
     ctx.fillRect(canvas.width * 0.2, canvas.height * 0.3, canvas.width * 0.6, canvas.height * 0.7);
-    
+
     // Arme
     ctx.fillRect(canvas.width * 0.1, canvas.height * 0.3, canvas.width * 0.1, canvas.height * 0.5);
     ctx.fillRect(canvas.width * 0.8, canvas.height * 0.3, canvas.width * 0.1, canvas.height * 0.5);
-    
+
     // Schattierung
     ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
     ctx.fillRect(canvas.width * 0.6, canvas.height * 0.3, canvas.width * 0.2, canvas.height * 0.7);
-    
+
     // Kopf
     ctx.fillStyle = '#27ae60';
     ctx.fillRect(canvas.width * 0.3, canvas.height * 0.1, canvas.width * 0.4, canvas.height * 0.2);
-    
+
     // Augen
     ctx.fillStyle = '#e74c3c';
-    ctx.fillRect(canvas.width * 0.35, canvas.height * 0.15, canvas.width * 0.1, canvas.height * 0.05);
-    ctx.fillRect(canvas.width * 0.55, canvas.height * 0.15, canvas.width * 0.1, canvas.height * 0.05);
-    
+    ctx.fillRect(
+      canvas.width * 0.35,
+      canvas.height * 0.15,
+      canvas.width * 0.1,
+      canvas.height * 0.05
+    );
+    ctx.fillRect(
+      canvas.width * 0.55,
+      canvas.height * 0.15,
+      canvas.width * 0.1,
+      canvas.height * 0.05
+    );
+
     // Mund
     ctx.fillStyle = '#c0392b';
-    ctx.fillRect(canvas.width * 0.4, canvas.height * 0.22, canvas.width * 0.2, canvas.height * 0.05);
-    
+    ctx.fillRect(
+      canvas.width * 0.4,
+      canvas.height * 0.22,
+      canvas.width * 0.2,
+      canvas.height * 0.05
+    );
+
     // Blutflecken/Wunden
     for (let i = 0; i < 10; i++) {
       const x = canvas.width * 0.2 + Math.random() * canvas.width * 0.6;
       const y = canvas.height * 0.3 + Math.random() * canvas.height * 0.7;
       const size = 2 + Math.random() * 5;
-      
+
       ctx.fillStyle = '#c0392b';
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     this.textures['zombie'] = new THREE.CanvasTexture(canvas);
     return this.textures['zombie'];
   }
-  
+
   // Zombie Kopf Textur
   createZombieHeadTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Hintergrund löschen (transparent)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     // Gesicht (zombiegrün)
     ctx.fillStyle = '#2ecc71';
-    ctx.fillRect(canvas.width * 0.25, canvas.height * 0.25, canvas.width * 0.5, canvas.height * 0.5);
-    
+    ctx.fillRect(
+      canvas.width * 0.25,
+      canvas.height * 0.25,
+      canvas.width * 0.5,
+      canvas.height * 0.5
+    );
+
     // Augen (rot und blutunterlaufen)
     ctx.fillStyle = '#c0392b';
-    ctx.fillRect(canvas.width * 0.35, canvas.height * 0.35, canvas.width * 0.1, canvas.height * 0.1);
-    ctx.fillRect(canvas.width * 0.55, canvas.height * 0.35, canvas.width * 0.1, canvas.height * 0.1);
-    
+    ctx.fillRect(
+      canvas.width * 0.35,
+      canvas.height * 0.35,
+      canvas.width * 0.1,
+      canvas.height * 0.1
+    );
+    ctx.fillRect(
+      canvas.width * 0.55,
+      canvas.height * 0.35,
+      canvas.width * 0.1,
+      canvas.height * 0.1
+    );
+
     // Pupillen
     ctx.fillStyle = '#2c3e50';
-    ctx.fillRect(canvas.width * 0.38, canvas.height * 0.38, canvas.width * 0.04, canvas.height * 0.04);
-    ctx.fillRect(canvas.width * 0.58, canvas.height * 0.38, canvas.width * 0.04, canvas.height * 0.04);
-    
+    ctx.fillRect(
+      canvas.width * 0.38,
+      canvas.height * 0.38,
+      canvas.width * 0.04,
+      canvas.height * 0.04
+    );
+    ctx.fillRect(
+      canvas.width * 0.58,
+      canvas.height * 0.38,
+      canvas.width * 0.04,
+      canvas.height * 0.04
+    );
+
     // Mund (blutig)
     ctx.fillStyle = '#c0392b';
-    ctx.fillRect(canvas.width * 0.35, canvas.height * 0.5, canvas.width * 0.3, canvas.height * 0.08);
-    
+    ctx.fillRect(
+      canvas.width * 0.35,
+      canvas.height * 0.5,
+      canvas.width * 0.3,
+      canvas.height * 0.08
+    );
+
     // Zähne
     for (let i = 0; i < 4; i++) {
       const x = canvas.width * (0.35 + 0.075 * i);
       ctx.fillStyle = '#ecf0f1';
       ctx.fillRect(x, canvas.height * 0.5, canvas.width * 0.05, canvas.height * 0.05);
     }
-    
+
     // Blutflecken/Wunden im Gesicht
     for (let i = 0; i < 5; i++) {
       const x = canvas.width * 0.25 + Math.random() * canvas.width * 0.5;
       const y = canvas.height * 0.25 + Math.random() * canvas.height * 0.5;
       const size = 1 + Math.random() * 3;
-      
+
       ctx.fillStyle = '#c0392b';
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     // Verrottungseffekte
     for (let i = 0; i < 3; i++) {
       const x = canvas.width * 0.25 + Math.random() * canvas.width * 0.5;
       const y = canvas.height * 0.25 + Math.random() * canvas.height * 0.5;
       const size = 3 + Math.random() * 5;
-      
+
       ctx.fillStyle = '#7f8c8d';
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     this.textures['zombieHead'] = new THREE.CanvasTexture(canvas);
     return this.textures['zombieHead'];
   }
-  
+
   createBulletTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Hintergrund löschen (transparent)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     // Metallischer Farbverlauf für die Patrone
     const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
-    gradient.addColorStop(0, '#D4AF37');    // Gold
-    gradient.addColorStop(0.4, '#FFF8DC');  // Hellgold
-    gradient.addColorStop(0.6, '#FFF8DC');  // Hellgold
-    gradient.addColorStop(1, '#D4AF37');    // Gold
-    
+    gradient.addColorStop(0, '#D4AF37'); // Gold
+    gradient.addColorStop(0.4, '#FFF8DC'); // Hellgold
+    gradient.addColorStop(0.6, '#FFF8DC'); // Hellgold
+    gradient.addColorStop(1, '#D4AF37'); // Gold
+
     // Hauptteil der Patrone
     ctx.fillStyle = gradient;
     ctx.fillRect(canvas.width * 0.2, canvas.height * 0.3, canvas.width * 0.6, canvas.height * 0.6);
-    
+
     // Geschossspitze
     ctx.fillStyle = '#B87333'; // Kupfer
     ctx.beginPath();
@@ -659,17 +889,17 @@ export class AssetLoader {
     ctx.lineTo(canvas.width * 0.7, canvas.height * 0.3);
     ctx.closePath();
     ctx.fill();
-    
+
     // Patronenboden
     ctx.fillStyle = '#8B4513'; // Dunkelbraun
     ctx.fillRect(canvas.width * 0.3, canvas.height * 0.9, canvas.width * 0.4, canvas.height * 0.1);
-    
+
     // Zündhütchen
     ctx.fillStyle = '#C0C0C0'; // Silber
     ctx.beginPath();
     ctx.arc(canvas.width * 0.5, canvas.height * 0.95, canvas.width * 0.06, 0, Math.PI * 2);
     ctx.fill();
-    
+
     // Glanzeffekt
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
     ctx.lineWidth = 2;
@@ -677,56 +907,56 @@ export class AssetLoader {
     ctx.moveTo(canvas.width * 0.3, canvas.height * 0.4);
     ctx.lineTo(canvas.width * 0.3, canvas.height * 0.85);
     ctx.stroke();
-    
+
     this.textures['bullet'] = new THREE.CanvasTexture(canvas);
     return this.textures['bullet'];
   }
-  
+
   // Boden Textur
   createGroundTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Basis-Bodenfarbe
     ctx.fillStyle = '#8B4513'; // Braun als Grundfarbe
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+
     // Verschiedene Bodenmuster erstellen
-    
+
     // Feiner Sand/Staub
     for (let i = 0; i < 500; i++) {
       const x = Math.random() * canvas.width;
       const y = Math.random() * canvas.height;
       const size = 0.5 + Math.random() * 1.5;
       const color = Math.random() > 0.5 ? '#A0522D' : '#CD853F';
-      
+
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     // Kleine Steine
     for (let i = 0; i < 50; i++) {
       const x = Math.random() * canvas.width;
       const y = Math.random() * canvas.height;
       const size = 1 + Math.random() * 3;
-      
+
       ctx.fillStyle = '#7f8c8d';
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     // Strukturlinien hinzufügen
     for (let i = 0; i < 20; i++) {
       const x = Math.random() * canvas.width;
       const y = Math.random() * canvas.height;
       const length = 10 + Math.random() * 20;
       const angle = Math.random() * Math.PI * 2;
-      
+
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -734,22 +964,22 @@ export class AssetLoader {
       ctx.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length);
       ctx.stroke();
     }
-    
+
     this.textures['ground'] = new THREE.CanvasTexture(canvas);
     return this.textures['ground'];
   }
-  
+
   // Pfad/Straßen Textur
   createPathTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Basis-Pfadfarbe
     ctx.fillStyle = '#D2B48C'; // Sandfarbe für Pfade
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+
     // Pfadstruktur hinzufügen - horizontale Linien
     for (let y = 0; y < canvas.height; y += 8) {
       ctx.strokeStyle = 'rgba(101, 67, 33, 0.3)'; // Dunkelbrauner Verlauf
@@ -759,34 +989,34 @@ export class AssetLoader {
       ctx.lineTo(canvas.width, y);
       ctx.stroke();
     }
-    
+
     // Unregelmäßige Strukturen
     for (let i = 0; i < 200; i++) {
       const x = Math.random() * canvas.width;
       const y = Math.random() * canvas.height;
       const size = 0.5 + Math.random() * 2;
-      
+
       // Variiere die Farben leicht für natürlicheres Aussehen
       const brightness = 0.7 + Math.random() * 0.3;
       ctx.fillStyle = `rgba(180, 150, 100, ${brightness})`;
-      
+
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     // Kleine Steine hinzufügen
     for (let i = 0; i < 30; i++) {
       const x = Math.random() * canvas.width;
       const y = Math.random() * canvas.height;
       const size = 1 + Math.random() * 2;
-      
+
       ctx.fillStyle = '#A9A9A9'; // Steingrau
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
     }
-    
+
     // Fußspuren/Reifenspuren Effekt
     for (let i = 0; i < 3; i++) {
       const startX = Math.random() * canvas.width;
@@ -794,12 +1024,12 @@ export class AssetLoader {
       const length = 30 + Math.random() * 50;
       const angle = Math.random() * Math.PI * 2;
       const width = 2 + Math.random() * 3;
-      
+
       ctx.strokeStyle = 'rgba(120, 100, 80, 0.4)';
       ctx.lineWidth = width;
       ctx.beginPath();
       ctx.moveTo(startX, startY);
-      
+
       // Leicht geschwungene Spur
       const segments = 5;
       for (let j = 1; j <= segments; j++) {
@@ -809,48 +1039,45 @@ export class AssetLoader {
         const y = startY + Math.sin(angle) * length * t;
         ctx.lineTo(x, y);
       }
-      
+
       ctx.stroke();
     }
-    
+
     this.textures['path'] = new THREE.CanvasTexture(canvas);
     return this.textures['path'];
   }
-  
+
   getTexture(name) {
     if (this.textures[name]) {
-      // Stelle sicher, dass die Textur aktualisiert wird
-      this.textures[name].needsUpdate = true;
       return this.textures[name];
     } else {
-      console.warn(`Texture "${name}" not found, creating generic texture instead`);
-      this.textures[name] = this.createGenericTexture(name);
-      return this.textures[name];
+      console.warn(`Texture '${name}' not found, using fallback`);
+      return this.createFallbackTexture(name);
     }
   }
-  
+
   createGenericTexture(name) {
     const canvas = document.createElement('canvas');
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Zeichne einen auffälligen checkerboard-Hintergrund für fehlende Texturen
     const checkerSize = this.textureSize / 8;
     for (let y = 0; y < canvas.height; y += checkerSize) {
       for (let x = 0; x < canvas.width; x += checkerSize) {
-        ctx.fillStyle = ((x / checkerSize + y / checkerSize) % 2 === 0) ? '#FF00FF' : '#000000';
+        ctx.fillStyle = (x / checkerSize + y / checkerSize) % 2 === 0 ? '#FF00FF' : '#000000';
         ctx.fillRect(x, y, checkerSize, checkerSize);
       }
     }
-    
+
     // Texturname als Text hinzufügen
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 16px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(`Missing: ${name}`, canvas.width / 2, canvas.height / 2);
-    
+
     const texture = new THREE.CanvasTexture(canvas);
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
@@ -859,7 +1086,426 @@ export class AssetLoader {
     texture.needsUpdate = true;
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.flipY = false;
-    
+
     return texture;
   }
-} 
+
+  // New methods for asset management
+
+  // Clear caches to free memory
+  clearCaches() {
+    // Dispose of textures
+    for (const texture of this.textureCache.values()) {
+      texture.dispose();
+    }
+    this.textureCache.clear();
+
+    // Clear other caches
+    this.modelCache.clear();
+    this.soundCache.clear();
+
+    console.log('Asset caches cleared');
+  }
+
+  // Preload specific assets for a level or scene
+  async preloadAssetsForScene(sceneId) {
+    console.log(`Preloading assets for scene: ${sceneId}`);
+    // In the future, this could load specific assets needed for a particular scene
+    return true;
+  }
+
+  // Building wall texture
+  createBuildingWallTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+
+    // Base color
+    ctx.fillStyle = '#e0e0e0';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Brick pattern
+    ctx.fillStyle = '#d3d3d3';
+    const brickWidth = 16;
+    const brickHeight = 8;
+    
+    for (let y = 0; y < canvas.height; y += brickHeight) {
+      const offset = (Math.floor(y / brickHeight) % 2) * (brickWidth / 2);
+      for (let x = 0; x < canvas.width + brickWidth; x += brickWidth) {
+        ctx.fillRect(x + offset - brickWidth/2, y, brickWidth - 1, brickHeight - 1);
+      }
+    }
+
+    // Add some noise for texture
+    this._addNoiseToCanvas(ctx, canvas.width, canvas.height, 10);
+
+    this.textures['buildingWall'] = new THREE.CanvasTexture(canvas);
+    return this.textures['buildingWall'];
+  }
+
+  // Building wall normal map
+  createBuildingWallNormalMap() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+
+    // Default normal pointing outward (RGB: 128, 128, 255)
+    ctx.fillStyle = '#8080ff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Brick pattern with subtle normal variation
+    const brickWidth = 16;
+    const brickHeight = 8;
+    
+    for (let y = 0; y < canvas.height; y += brickHeight) {
+      const offset = (Math.floor(y / brickHeight) % 2) * (brickWidth / 2);
+      for (let x = 0; x < canvas.width + brickWidth; x += brickWidth) {
+        // Brick edges - slight darkness for inward normal
+        ctx.fillStyle = '#7878f0';
+        ctx.fillRect(x + offset - brickWidth/2, y, brickWidth, 1);
+        ctx.fillRect(x + offset - brickWidth/2, y, 1, brickHeight);
+        
+        // Brick center - slight brightness for outward normal
+        ctx.fillStyle = '#8888ff';
+        ctx.fillRect(x + offset - brickWidth/2 + 2, y + 2, brickWidth - 4, brickHeight - 4);
+      }
+    }
+
+    this.textures['buildingWallNormal'] = new THREE.CanvasTexture(canvas);
+    return this.textures['buildingWallNormal'];
+  }
+
+  // Building glass texture
+  createBuildingGlassTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+
+    // Base color (blue-ish glass)
+    ctx.fillStyle = '#a7c8e7';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Window pattern
+    const windowSize = 16;
+    const gap = 4;
+    
+    ctx.fillStyle = '#87a8c7';
+    for (let y = 0; y < canvas.height; y += windowSize + gap) {
+      for (let x = 0; x < canvas.width; x += windowSize + gap) {
+        ctx.fillRect(x, y, windowSize, windowSize);
+      }
+    }
+
+    // Horizontal reflections
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+    for (let y = 8; y < canvas.height; y += windowSize + gap) {
+      ctx.fillRect(0, y, canvas.width, 2);
+    }
+
+    this.textures['buildingGlass'] = new THREE.CanvasTexture(canvas);
+    return this.textures['buildingGlass'];
+  }
+
+  // Concrete wall texture
+  createConcreteWallTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+
+    // Base concrete color
+    ctx.fillStyle = '#a0a0a0';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Add noise pattern for concrete texture
+    this._addNoiseToCanvas(ctx, canvas.width, canvas.height, 20);
+    
+    // Add some cracks
+    ctx.strokeStyle = '#909090';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+      const x1 = Math.random() * canvas.width;
+      const y1 = Math.random() * canvas.height;
+      const x2 = x1 + (Math.random() * 20 - 10);
+      const y2 = y1 + (Math.random() * 20 - 10);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    this.textures['concreteWall'] = new THREE.CanvasTexture(canvas);
+    return this.textures['concreteWall'];
+  }
+
+  // Concrete wall normal map
+  createConcreteWallNormalMap() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+
+    // Default normal pointing outward (RGB: 128, 128, 255)
+    ctx.fillStyle = '#8080ff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Add subtle normal variations for concrete
+    for (let y = 0; y < canvas.height; y += 4) {
+      for (let x = 0; x < canvas.width; x += 4) {
+        // Random normal variation
+        const variation = Math.floor(Math.random() * 10) - 5;
+        const r = 128 + variation;
+        const g = 128 + variation;
+        const b = 255;
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        ctx.fillRect(x, y, 4, 4);
+      }
+    }
+
+    // Add some deeper cracks in the normal map
+    ctx.strokeStyle = '#7878f0';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+      const x1 = Math.random() * canvas.width;
+      const y1 = Math.random() * canvas.height;
+      const x2 = x1 + (Math.random() * 20 - 10);
+      const y2 = y1 + (Math.random() * 20 - 10);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    this.textures['concreteWallNormal'] = new THREE.CanvasTexture(canvas);
+    return this.textures['concreteWallNormal'];
+  }
+
+  // Metal wall texture
+  createMetalWallTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+
+    // Base metal color
+    ctx.fillStyle = '#8c8c8c';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Metal panel pattern
+    const panelWidth = 32;
+    const panelHeight = 16;
+    
+    for (let y = 0; y < canvas.height; y += panelHeight) {
+      for (let x = 0; x < canvas.width; x += panelWidth) {
+        ctx.fillStyle = '#7a7a7a';
+        ctx.fillRect(x, y, panelWidth - 1, panelHeight - 1);
+        
+        // Add panel border
+        ctx.fillStyle = '#686868';
+        ctx.fillRect(x, y, panelWidth, 1);
+        ctx.fillRect(x, y, 1, panelHeight);
+        
+        // Add some wear and scratches
+        ctx.fillStyle = '#989898';
+        for (let i = 0; i < 3; i++) {
+          const scratchX = x + Math.random() * (panelWidth - 5);
+          const scratchY = y + Math.random() * (panelHeight - 2);
+          const scratchLength = Math.random() * 8 + 2;
+          ctx.fillRect(scratchX, scratchY, scratchLength, 1);
+        }
+      }
+    }
+
+    // Add some shine spots
+    ctx.fillStyle = 'rgba(200, 200, 200, 0.1)';
+    for (let i = 0; i < 10; i++) {
+      const shineX = Math.random() * canvas.width;
+      const shineY = Math.random() * canvas.height;
+      const shineSize = Math.random() * 10 + 5;
+      ctx.beginPath();
+      ctx.arc(shineX, shineY, shineSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    this.textures['metalWall'] = new THREE.CanvasTexture(canvas);
+    return this.textures['metalWall'];
+  }
+
+  // Metal wall normal map
+  createMetalWallNormalMap() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+
+    // Default normal pointing outward (RGB: 128, 128, 255)
+    ctx.fillStyle = '#8080ff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Metal panel pattern in normal map
+    const panelWidth = 32;
+    const panelHeight = 16;
+    
+    for (let y = 0; y < canvas.height; y += panelHeight) {
+      for (let x = 0; x < canvas.width; x += panelWidth) {
+        // Panel edges - slightly inward normal
+        ctx.fillStyle = '#7878f0';
+        ctx.fillRect(x, y, panelWidth, 1);
+        ctx.fillRect(x, y, 1, panelHeight);
+        
+        // Panel center - slightly outward normal
+        ctx.fillStyle = '#8888ff';
+        ctx.fillRect(x + 2, y + 2, panelWidth - 4, panelHeight - 4);
+        
+        // Add some dents and bumps
+        for (let i = 0; i < 3; i++) {
+          const bumpX = x + Math.random() * (panelWidth - 8);
+          const bumpY = y + Math.random() * (panelHeight - 8);
+          const bumpSize = Math.random() * 4 + 2;
+          
+          // Random bump or dent
+          const bumpType = Math.random() > 0.5;
+          ctx.fillStyle = bumpType ? '#9090ff' : '#7070f0';
+          
+          ctx.beginPath();
+          ctx.arc(bumpX, bumpY, bumpSize, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    this.textures['metalWallNormal'] = new THREE.CanvasTexture(canvas);
+    return this.textures['metalWallNormal'];
+  }
+
+  // Asphalt texture
+  createAsphaltTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+
+    // Base asphalt color
+    ctx.fillStyle = '#2c2c2c';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Add noise for asphalt texture
+    this._addNoiseToCanvas(ctx, canvas.width, canvas.height, 15, '#3a3a3a');
+
+    // Add cracks
+    ctx.strokeStyle = '#252525';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 8; i++) {
+      const x1 = Math.random() * canvas.width;
+      const y1 = Math.random() * canvas.height;
+      const x2 = x1 + (Math.random() * 30 - 15);
+      const y2 = y1 + (Math.random() * 30 - 15);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    // Add some small pebbles
+    for (let i = 0; i < 50; i++) {
+      const pebbleX = Math.random() * canvas.width;
+      const pebbleY = Math.random() * canvas.height;
+      const pebbleSize = Math.random() * 2 + 1;
+      const gray = Math.floor(Math.random() * 30 + 50);
+      
+      ctx.fillStyle = `rgb(${gray}, ${gray}, ${gray})`;
+      ctx.beginPath();
+      ctx.arc(pebbleX, pebbleY, pebbleSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    this.textures['asphalt'] = new THREE.CanvasTexture(canvas);
+    return this.textures['asphalt'];
+  }
+
+  // Asphalt normal map
+  createAsphaltNormalMap() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+
+    // Default normal pointing outward (RGB: 128, 128, 255)
+    ctx.fillStyle = '#8080ff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Add subtle normal variations for asphalt texture
+    for (let y = 0; y < canvas.height; y += 2) {
+      for (let x = 0; x < canvas.width; x += 2) {
+        // Random normal variation
+        const variation = Math.floor(Math.random() * 8) - 4;
+        const r = 128 + variation;
+        const g = 128 + variation;
+        const b = 255;
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        ctx.fillRect(x, y, 2, 2);
+      }
+    }
+
+    // Add cracks in the normal map
+    ctx.strokeStyle = '#7878f0';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 8; i++) {
+      const x1 = Math.random() * canvas.width;
+      const y1 = Math.random() * canvas.height;
+      const x2 = x1 + (Math.random() * 30 - 15);
+      const y2 = y1 + (Math.random() * 30 - 15);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    // Add some bumps for pebbles
+    for (let i = 0; i < 50; i++) {
+      const pebbleX = Math.random() * canvas.width;
+      const pebbleY = Math.random() * canvas.height;
+      const pebbleSize = Math.random() * 2 + 1;
+      
+      ctx.fillStyle = '#8888ff'; // Slightly higher bump
+      ctx.beginPath();
+      ctx.arc(pebbleX, pebbleY, pebbleSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    this.textures['asphaltNormal'] = new THREE.CanvasTexture(canvas);
+    return this.textures['asphaltNormal'];
+  }
+
+  // Utility to add noise to a canvas context
+  _addNoiseToCanvas(ctx, width, height, intensity = 10, color = null) {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    
+    for (let i = 0; i < data.length; i += 4) {
+      if (color) {
+        // Parse the color to RGB
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        
+        // Apply the color with random noise
+        const noise = Math.random() * intensity - (intensity / 2);
+        data[i] = Math.max(0, Math.min(255, r + noise));
+        data[i + 1] = Math.max(0, Math.min(255, g + noise));
+        data[i + 2] = Math.max(0, Math.min(255, b + noise));
+      } else {
+        // Apply random noise to existing colors
+        const noise = Math.random() * intensity - (intensity / 2);
+        data[i] = Math.max(0, Math.min(255, data[i] + noise));
+        data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
+        data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
+      }
+    }
+    
+    ctx.putImageData(imageData, 0, 0);
+  }
+}

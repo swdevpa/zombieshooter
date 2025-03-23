@@ -1,0 +1,311 @@
+{
+  "project": "Zombie Wave Shooter",
+  "description": "A first-person zombie wave shooter game built with Three.js",
+  "phases": [
+    {
+      "name": "Project Setup & Foundation",
+      "stories": [
+        {
+          "id": "setup-threejs",
+          "title": "Initialize Three.js project with basic scene",
+          "status": "done",
+          "notes": ""
+        },
+        {
+          "id": "dev-environment",
+          "title": "Set up development environment and build pipeline",
+          "status": "done",
+          "notes": "Enhanced Vite.js configuration, improved AssetLoader with progress tracking and error handling, added ESLint/Prettier for code quality, created documentation."
+        },
+        {
+          "id": "first-person-camera",
+          "title": "Implement basic first-person camera controls",
+          "status": "done",
+          "notes": "Implemented full FPS camera controls with pointer lock, mouse look, WASD movement relative to camera direction, recoil effects, head bobbing, and a click-to-play overlay. Added basic collision detection system."
+        },
+        {
+          "id": "rendering-loop",
+          "title": "Create basic rendering loop with performance monitoring",
+          "status": "done",
+          "notes": "Implemented comprehensive performance monitoring with FPS tracking, frame time analysis, and memory usage statistics. Added view frustum culling, object pooling for bullets, and quality settings to optimize performance across different hardware."
+        },
+        {
+          "id": "modular-architecture",
+          "title": "Establish modular code architecture",
+          "status": "done",
+          "notes": "Implemented UiManager and LevelManager to enhance modularity and separation of concerns. Fixed missing manager files and integrated them into the game architecture. Addressed multiple initialization issues including DOM container error, object initialization order, UI dependencies, missing API methods, and ZombieManager's city reference issue to ensure proper component communication."
+        }
+      ]
+    },
+    {
+      "name": "Core Player Mechanics",
+      "stories": [
+        {
+          "id": "player-movement",
+          "title": "Implement player movement and collision detection",
+          "status": "done",
+          "notes": "Enhanced player movement with improved physics-based acceleration and deceleration. Implemented robust collision detection using raycasting and sphere-box collision algorithms. Created a more accurate city generation system with proper building placement and collision objects. Added directional collision response to improve movement smoothness when hitting walls."
+        },
+        {
+          "id": "mouse-look",
+          "title": "Add mouse-look controls with proper sensitivity",
+          "status": "done",
+          "notes": "Implemented enhanced mouse-look controls with adjustable sensitivity, smoothing options, and Y-axis inversion. Created a user interface for adjusting mouse settings, including sliders for sensitivity and smoothing. Added Alt+S keyboard shortcut to access settings and FPS counter for performance monitoring."
+        },
+        {
+          "id": "weapon-system",
+          "title": "Create weapon system framework",
+          "status": "done",
+          "notes": "Implemented an extensible weapon system with base Weapon class and a Pistol implementation. Created WeaponManager for weapon switching and management. Added support for switching weapons with number keys and mouse wheel. UI integration for ammo display is complete."
+        },
+        {
+          "id": "shooting-mechanics",
+          "title": "Implement shooting mechanics with raycasting",
+          "status": "done",
+          "notes": "Implemented advanced shooting mechanics with dual system: raycasting for immediate hit detection and visual bullet objects for effects. Added realistic bullet physics with proper trajectory, impact effects (blood splashes for zombies, sparks/smoke for environment), and weapon-specific spread and recoil animations."
+        },
+        {
+          "id": "weapon-model",
+          "title": "Add basic weapon model with animations",
+          "status": "done",
+          "notes": "Enhanced the Weapon and Pistol classes with detailed 3D models using component-based structure. Added animations for idle, shooting, and multi-phase reload. Implemented realistic weapon behavior including slide movement, hammer action, and magazine ejection/insertion. Added subtle idle animations and proper response to player movements."
+        },
+        {
+          "id": "reload-animation",
+          "title": "Create reload animation system",
+          "status": "done",
+          "notes": "Implemented a robust reload animation system with multiple phases: lowering weapon, ejecting magazine, inserting new magazine, and chambering a round. Added smooth transitions between phases and weapon-specific animations. Integrated UI feedback with reload indicators and ammo display updates. The system is modular and can be extended for different weapon types."
+        },
+        {
+          "id": "ammo-management",
+          "title": "Implement ammo management",
+          "status": "done",
+          "notes": "Implemented comprehensive ammo system with magazine and reserve ammo tracking, reload logic that consumes reserves, UI updates showing both ammo types, and ammo pickup entities throughout the game world. Added visual feedback for low ammo, empty magazines, and reloading states."
+        }
+      ]
+    },
+    {
+      "name": "Environment Generation",
+      "stories": [
+        {
+          "id": "building-generation",
+          "title": "Create procedural building generation system",
+          "status": "done",
+          "notes": "Implemented a comprehensive procedural building generation system with three types of buildings (residential, commercial, industrial), four destruction levels for apocalyptic atmosphere, detailed architectural elements (windows, doors, balconies), and performance optimizations including material caching and geometry templates."
+        },
+        {
+          "id": "city-components",
+          "title": "Design modular city components (streets, buildings, etc.)",
+          "status": "done",
+          "notes": "Implemented a comprehensive CityComponents class that adds modular urban elements including sidewalks, street props, debris piles, and abandoned vehicles with optimal performance using instanced meshes."
+        },
+        {
+          "id": "texturing-system",
+          "title": "Implement environment texturing system",
+          "status": "done",
+          "notes": "Implemented a comprehensive texturing system with PBR materials for buildings and city components. Added procedural generation of base textures and normal maps, material variation based on building type and destruction level, and texture quality settings for performance optimization."
+        },
+        {
+          "id": "atmospheric-effects",
+          "title": "Add atmospheric effects (fog, lighting, etc.)",
+          "status": "done",
+          "notes": "Implemented advanced atmospheric effects including dynamic fog system, time of day presets with different lighting conditions, flickering light effects, and floating dust particles. Added quality-based optimizations for different hardware capabilities."
+        },
+        {
+          "id": "apocalyptic-assets",
+          "title": "Create apocalyptic city assets procedurally",
+          "status": "done",
+          "notes": "Implemented a comprehensive ApocalypticAssets class for procedurally generating apocalyptic elements including barricades, gore (blood pools and body parts), building wreckage, military checkpoints, overgrown foliage, and fire/smoke effects. Used instanced meshes for optimal performance and added animated effects for fire."
+        },
+        {
+          "id": "level-boundaries",
+          "title": "Implement level boundaries and collision",
+          "status": "done",
+          "notes": "Implemented a comprehensive level boundary system with physical barrier walls, collision detection, and visual feedback. Used instanced meshes for performance optimization and added warning decorations that provide feedback when player approaches boundaries. Added keyboard controls for toggling visibility and debug mode."
+        }
+      ]
+    },
+    {
+      "name": "Enemy System",
+      "stories": [
+        {
+          "id": "zombie-models",
+          "title": "Design zombie character models and animations",
+          "status": "done",
+          "notes": "Implemented a comprehensive zombie model system with three distinct types (standard, runner, brute), each with unique appearances, animations, and behaviors. Created a ZombieFactory for type management, a ZombieTextureAtlas for procedural texturing, and enhanced the Zombie and ZombieManager classes to support the new model system with performance optimizations."
+        },
+        {
+          "id": "zombie-ai",
+          "title": "Implement basic zombie AI with pathfinding",
+          "status": "done",
+          "notes": "Implemented a comprehensive zombie AI pathfinding system with NavigationGrid for city mapping, type-specific behaviors for zombies, flanking for runners, obstacle breaking for brutes, advanced collision handling, debug visualization, and performance optimizations including path simplification and update throttling."
+        },
+        {
+          "id": "spawn-system",
+          "title": "Create zombie spawn system",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "wave-progression",
+          "title": "Design wave progression system",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "zombie-types",
+          "title": "Add different zombie types with varied behaviors",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "damage-system",
+          "title": "Implement damage system for zombies",
+          "status": "todo",
+          "notes": ""
+        }
+      ]
+    },
+    {
+      "name": "UI & Game Feedback",
+      "stories": [
+        {
+          "id": "health-bar",
+          "title": "Create health bar UI (bottom left)",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "ammo-counter",
+          "title": "Implement ammunition counter UI (bottom right)",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "hit-indicators",
+          "title": "Add hit indicators and damage feedback",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "game-state",
+          "title": "Implement game state management (menu, game, death)",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "score-system",
+          "title": "Create score system and wave indicators",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "sound-effects",
+          "title": "Add sound effects and basic music",
+          "status": "todo",
+          "notes": ""
+        }
+      ]
+    },
+    {
+      "name": "Performance Optimization",
+      "stories": [
+        {
+          "id": "frustum-culling",
+          "title": "Implement view frustum culling",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "occlusion-culling",
+          "title": "Add occlusion culling for city environments",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "asset-optimization",
+          "title": "Optimize asset loading and management",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "lod-system",
+          "title": "Implement level of detail (LOD) system",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "render-pipeline",
+          "title": "Profile and optimize render pipeline",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "object-pooling",
+          "title": "Implement object pooling for zombies and effects",
+          "status": "todo",
+          "notes": ""
+        }
+      ]
+    },
+    {
+      "name": "Polish & Refinement",
+      "stories": [
+        {
+          "id": "visual-effects",
+          "title": "Enhance visual effects (muzzle flash, blood, impacts)",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "animation-refinement",
+          "title": "Refine animations and transitions",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "advanced-lighting",
+          "title": "Add advanced lighting effects",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "difficulty-progression",
+          "title": "Implement difficulty progression",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "tutorial",
+          "title": "Create tutorial/instructions",
+          "status": "todo",
+          "notes": ""
+        },
+        {
+          "id": "final-optimization",
+          "title": "Final performance testing and optimization",
+          "status": "todo",
+          "notes": ""
+        }
+      ]
+    }
+  ],
+  "priorities": [
+    "Performance optimization is critical - implement culling early",
+    "Focus on core gameplay loop before deep asset development",
+    "Maintain modular architecture for easier iteration",
+    "Regular testing on various hardware configurations"
+  ],
+  "notes": [
+    "Implemented a comprehensive zombie AI pathfinding system with NavigationGrid for city mapping, type-specific behaviors for zombies, flanking for runners, obstacle breaking for brutes, advanced collision handling, debug visualization, and performance optimizations.",
+    "Implemented a comprehensive zombie model system with three distinct types (standard, runner, brute), each with unique appearances, animations, and behaviors. Used ZombieFactory for type management and ZombieTextureAtlas for procedural texturing.",
+    "Implemented a comprehensive level boundary system with physical walls, collision detection, warning decorations, and debugging features to prevent players from leaving the game area.",
+    "Implemented a comprehensive ApocalypticAssets class for procedurally generating apocalyptic elements including barricades, gore, wreckage, military checkpoints, overgrown foliage, and fire effects.",
+    "Implemented advanced atmospheric effects with dynamic fog, time of day presets, and floating dust particles to create an immersive apocalyptic environment.",
+    "Implemented a comprehensive texturing system with PBR materials for buildings and city components, including procedural texture generation and normal maps for realistic surface detail.",
+    "Implemented a comprehensive CityComponents class that adds modular urban elements including sidewalks, street props, debris piles, and abandoned vehicles with optimal performance using instanced meshes.",
+    "Implemented a comprehensive procedural building generation system with three building types, four destruction levels, and architectural details to create a realistic apocalyptic cityscape.",
+    "Implemented a comprehensive ammo management system with magazine and reserve ammo tracking, UI feedback, and ammo pickups placed throughout the game world.",
+    "Implemented a robust reload animation system with multi-phase animations including magazine ejection and insertion for realistic weapon handling"
+  ]
+} 

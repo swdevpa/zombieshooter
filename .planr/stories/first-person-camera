@@ -1,0 +1,27 @@
+# First-Person Camera Implementation
+
+## Description
+Implement basic first-person camera controls to create an immersive player experience in the Zombie Wave Shooter game.
+
+## Acceptance Criteria
+- [ ] Configure perspective camera with appropriate FOV and clipping planes
+- [ ] Position camera at eye level of the player character
+- [ ] Implement smooth camera movement following player position
+- [ ] Handle camera rotation based on mouse input
+- [ ] Add camera bobbing effect during player movement
+- [ ] Implement camera recoil when shooting
+- [ ] Ensure camera remains level (no roll) during movement
+- [ ] Add collision detection to prevent camera from going through walls
+
+## Implementation Notes
+The first-person camera should:
+- Create an immersive feeling for the player
+- Respond smoothly to player input
+- Have realistic positioning and movement
+- Include subtle effects like head bobbing and weapon recoil
+- Be optimized for performance with frustum culling
+
+## Developer Notes
+- Started implementation on March 23, 2024
+- Reviewing existing camera setup in Game.js
+- Will use PointerLockControls from Three.js for mouse input 

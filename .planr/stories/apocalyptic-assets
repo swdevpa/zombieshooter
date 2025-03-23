@@ -1,0 +1,33 @@
+# Story: Create apocalyptic city assets procedurally
+
+## Status: DONE
+
+## Description
+Implement a system to procedurally generate apocalyptic assets throughout the city to enhance the post-apocalyptic atmosphere. These assets should include various environmental details that make the world feel abandoned and dangerous.
+
+## Acceptance Criteria
+- [x] Create a new ApocalypticAssets class that integrates with the city generation system
+- [x] Implement procedural generation for barricades (wooden planks, metal sheets)
+- [x] Add gore effects (blood pools, body parts) scattered throughout the environment
+- [x] Generate building wreckage and debris piles with varied sizes and compositions
+- [x] Create military checkpoint elements (barriers, crates, sandbags)
+- [x] Add overgrown foliage elements (weeds, ivy) to show nature reclaiming the city
+- [x] Implement fire and smoke effects with animation for dynamic atmosphere
+- [x] Ensure proper collision detection for all generated assets
+- [x] Use instanced meshes for optimal performance
+- [x] Update the TexturingSystem to support apocalyptic materials
+
+## Developer Notes
+- Created ApocalypticAssets.js class with modular structure for different asset categories
+- Used instanced meshes for all repetitive elements for optimal performance
+- Implemented custom materials for each asset type with proper PBR settings
+- Added collision detection for objects to ensure proper player interaction
+- Created animated fire effects with dynamic color changes for realism
+- Integrated apocalyptic assets generation into the city generation pipeline
+- Updated the TexturingSystem to include dedicated methods for apocalyptic materials
+- Modified City.js to instantiate and manage the ApocalypticAssets class
+- Implemented proper resource management with dispose() methods to prevent memory leaks
+- Added methods to check for asset placement relative to buildings and streets
+- Implemented environmental storytelling through strategic placement of assets
+- Used efficient Matrix4 manipulation for instanced mesh positioning and rotation
+- Updated the collision detection system to handle apocalyptic assets 

@@ -1,46 +1,95 @@
 import * as THREE from 'three';
 import { Zombie } from '../entities/Zombie.js';
+import { ZombieFactory } from '../entities/zombies/ZombieFactory.js';
+import { ZombieTextureAtlas } from '../../utils/ZombieTextureAtlas.js';
 
 export class ZombieManager {
   constructor(game, assetLoader) {
     this.game = game;
     this.assetLoader = assetLoader;
-    
+
     // Zombie management
     this.zombies = [];
     this.maxZombies = 20; // Maximum zombies allowed at once
     this.zombiesPerWave = 10; // Base number of zombies per wave
     this.zombiesRemaining = 0;
     this.isSpawning = false;
-    
-    // Spawn points will be determined when the map is loaded
+    this.currentWave = 1;
+
+    // Spawn points will be determined when the city is loaded
     this.spawnPoints = [];
-    
+
     // Debug visualization
     this.debugMode = false; // Set to true to show spawn points
     this.debugMarkers = [];
-  }
-  
-  init() {
-    // Called when map is loaded to setup spawn points
-    this.determineSpawnPoints();
     
+    // Create zombie factory
+    this.zombieFactory = new ZombieFactory(assetLoader);
+    
+    // Create texture atlas for zombies
+    this.textureAtlas = new ZombieTextureAtlas();
+  }
+
+  init() {
+    // Called when city is loaded to setup spawn points
+    this.determineSpawnPoints();
+
     // Check for debug mode
     if (window.location.search.includes('debug=true')) {
       this.debugMode = true;
     }
+    
+    // Register textures with asset loader
+    this.registerZombieTextures();
   }
   
+  /**
+   * Register procedurally generated zombie textures with asset loader
+   */
+  registerZombieTextures() {
+    // Create body textures for each zombie type
+    ['standard', 'runner', 'brute'].forEach(type => {
+      for (let variation = 0; variation < 4; variation++) {
+        const bodyTexture = this.textureAtlas.getBodyTexture(type, variation);
+        const headTexture = this.textureAtlas.getHeadTexture(type, variation);
+        
+        // Register with asset loader
+        this.assetLoader.registerTexture(`zombie_${type}_${variation}_body`, bodyTexture);
+        this.assetLoader.registerTexture(`zombie_${type}_${variation}_head`, headTexture);
+      }
+    });
+  }
+
+  configure(config) {
+    // Update zombie manager configuration based on level settings
+    if (config.spawnRate) {
+      // Adjust spawn rate
+      this.spawnRate = config.spawnRate;
+    }
+    
+    if (config.maxZombies) {
+      // Set maximum zombies allowed at once
+      this.maxZombies = config.maxZombies;
+    }
+    
+    if (config.waveCount) {
+      // Set the number of waves for this level
+      this.waveCount = config.waveCount;
+    }
+    
+    console.log(`ZombieManager configured: spawnRate=${this.spawnRate}, maxZombies=${this.maxZombies}, waveCount=${this.waveCount}`);
+  }
+
   // Create visual markers for spawn points in debug mode
   visualizeSpawnPoints() {
     if (!this.debugMode) return;
-    
+
     // Clear previous markers
     for (const marker of this.debugMarkers) {
       this.game.scene.remove(marker);
     }
     this.debugMarkers = [];
-    
+
     // Create new markers
     for (const spawnPoint of this.spawnPoints) {
       const geometry = new THREE.SphereGeometry(0.3, 8, 8);
@@ -48,259 +97,204 @@ export class ZombieManager {
       const marker = new THREE.Mesh(geometry, material);
       marker.position.copy(spawnPoint);
       marker.position.y = 0.5; // Lift slightly above ground
-      
+
       this.game.scene.add(marker);
       this.debugMarkers.push(marker);
     }
   }
-  
+
   determineSpawnPoints() {
     // Clear existing spawn points
     this.spawnPoints = [];
-    
-    // Create spawn points around the edges of the map
-    const mapWidth = this.game.map.width;
-    const mapHeight = this.game.map.height;
-    const tileSize = this.game.map.tileSize;
-    const mapOffsetX = this.game.map.container.position.x;
-    const mapOffsetZ = this.game.map.container.position.z;
-    
-    // Check edges with finer spacing to find more potential spawn points
-    // Check every tile instead of every 5 tiles
-    for (let x = 0; x < mapWidth; x++) {
+
+    // Check if city exists and has citySize before trying to use it
+    if (!this.game.city || typeof this.game.city.citySize === 'undefined') {
+      console.warn('City not initialized yet, using default spawn points');
+      // Create some default spawn points in a circle around the origin
+      const radius = 20; // Default radius
+      const numPoints = 20; // Number of points around the circle
+      
+      for (let i = 0; i < numPoints; i++) {
+        const angle = (i / numPoints) * Math.PI * 2;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        this.addSpawnPoint(x, z);
+      }
+      
+      return;
+    }
+
+    // Create spawn points around the edges of the city
+    const citySize = this.game.city.citySize;
+    const cityOffsetX = this.game.city.container.position.x;
+    const cityOffsetZ = this.game.city.container.position.z;
+
+    // Number of spawn points per edge
+    const spawnPointsPerEdge = 20;
+    const spacing = citySize / spawnPointsPerEdge;
+
+    // Add spawn points along the edges
+    for (let i = 0; i < spawnPointsPerEdge; i++) {
+      const offset = i * spacing;
+
       // Top edge
-      this.addSpawnPoint(
-        mapOffsetX + x * tileSize,
-        mapOffsetZ
-      );
-      
+      this.addSpawnPoint(cityOffsetX + offset, cityOffsetZ);
+
       // Bottom edge
-      this.addSpawnPoint(
-        mapOffsetX + x * tileSize,
-        mapOffsetZ + (mapHeight - 1) * tileSize
-      );
-    }
-    
-    for (let z = 0; z < mapHeight; z++) {
+      this.addSpawnPoint(cityOffsetX + offset, cityOffsetZ + citySize - 1);
+
       // Left edge
-      this.addSpawnPoint(
-        mapOffsetX,
-        mapOffsetZ + z * tileSize
-      );
-      
+      this.addSpawnPoint(cityOffsetX, cityOffsetZ + offset);
+
       // Right edge
-      this.addSpawnPoint(
-        mapOffsetX + (mapWidth - 1) * tileSize,
-        mapOffsetZ + z * tileSize
-      );
+      this.addSpawnPoint(cityOffsetX + citySize - 1, cityOffsetZ + offset);
     }
-    
-    // If we found no spawn points, also check one tile in from the edges
-    if (this.spawnPoints.length === 0) {
-      for (let x = 1; x < mapWidth - 1; x++) {
-        // One in from top
-        this.addSpawnPoint(
-          mapOffsetX + x * tileSize,
-          mapOffsetZ + 1 * tileSize
-        );
-        
-        // One in from bottom
-        this.addSpawnPoint(
-          mapOffsetX + x * tileSize,
-          mapOffsetZ + (mapHeight - 2) * tileSize
-        );
-      }
-      
-      for (let z = 1; z < mapHeight - 1; z++) {
-        // One in from left
-        this.addSpawnPoint(
-          mapOffsetX + 1 * tileSize,
-          mapOffsetZ + z * tileSize
-        );
-        
-        // One in from right
-        this.addSpawnPoint(
-          mapOffsetX + (mapWidth - 2) * tileSize,
-          mapOffsetZ + z * tileSize
-        );
-      }
-    }
-    
-    // If we still found no spawn points, check random positions inside the map
-    if (this.spawnPoints.length === 0) {
-      for (let i = 0; i < 100; i++) {
-        const randomX = Math.floor(Math.random() * (mapWidth - 4)) + 2;
-        const randomZ = Math.floor(Math.random() * (mapHeight - 4)) + 2;
-        
-        this.addSpawnPoint(
-          mapOffsetX + randomX * tileSize,
-          mapOffsetZ + randomZ * tileSize
-        );
-      }
-    }
-    
-    // Visualize spawn points in debug mode
+
+    console.log(`Generated ${this.spawnPoints.length} spawn points`);
+
+    // Validate spawn points (can be skipped for the initial city implementation)
+    // this.validateSpawnPoints();
+
+    // Visualize spawn points if in debug mode
     this.visualizeSpawnPoints();
   }
-  
+
   addSpawnPoint(x, z) {
-    // Check if position is walkable
-    if (this.game.map.isTileWalkable(x, z)) {
-      // Additional check to make sure spawn point is not too close to water
-      // Check a radius around the spawn point to ensure zombies won't immediately walk into water
-      const safeRadius = 1.0; // Safety radius around spawn point
-      const checkPoints = [
-        { x: x + safeRadius, z: z + safeRadius },
-        { x: x + safeRadius, z: z - safeRadius },
-        { x: x - safeRadius, z: z + safeRadius },
-        { x: x - safeRadius, z: z - safeRadius },
-        { x: x + safeRadius, z: z },
-        { x: x - safeRadius, z: z },
-        { x: x, z: z + safeRadius },
-        { x: x, z: z - safeRadius }
-      ];
-      
-      // Count how many surrounding points are walkable
-      let walkablePoints = 0;
-      for (const point of checkPoints) {
-        if (this.game.map.isTileWalkable(point.x, point.z)) {
-          walkablePoints++;
-        }
-      }
-      
-      // Only add spawn point if at least 6 of 8 surrounding points are walkable
-      // This ensures zombies spawn on solid land, not near water edges
-      if (walkablePoints >= 6) {
-        this.spawnPoints.push(new THREE.Vector3(x, 0, z));
-      }
-    }
+    // Create spawn point at the specified position
+    const position = new THREE.Vector3(x, 0, z);
+
+    // Add some random variation to prevent zombies from spawning at exact same spots
+    position.x += (Math.random() - 0.5) * 2;
+    position.z += (Math.random() - 0.5) * 2;
+
+    // Set Y position to ground level (0 for now)
+    position.y = 0;
+
+    this.spawnPoints.push(position);
   }
-  
+
   // Validate that spawn points have a valid path to the player
   validateSpawnPoints() {
-    // Get player position on grid
-    const playerPos = this.game.player.container.position;
-    const mapOffsetX = this.game.map.container.position.x;
-    const mapOffsetZ = this.game.map.container.position.z;
-    const tileSize = this.game.map.tileSize;
-    
-    const playerGridX = Math.floor((playerPos.x - mapOffsetX) / tileSize);
-    const playerGridZ = Math.floor((playerPos.z - mapOffsetZ) / tileSize);
-    
-    // Calculate which tiles are reachable from the player's position
-    const grid = this.game.map.navigationGrid;
-    if (!grid) {
+    // Skip validation if no navigation grid
+    if (!this.game.navigationGrid) {
+      console.log('Navigation grid not available, skipping spawn point validation');
       return;
     }
+
+    console.log('Validating spawn points for valid paths to player...');
     
-    const width = this.game.map.width;
-    const height = this.game.map.height;
-    
-    // Initialize reachability map
-    const reachable = Array(height).fill().map(() => Array(width).fill(false));
-    
-    // Check if player is on a valid tile
-    if (playerGridX < 0 || playerGridX >= width || playerGridZ < 0 || playerGridZ >= height) {
-      return;
-    }
-    
-    if (grid[playerGridZ][playerGridX] === 0) {
-      return;
-    }
-    
-    // Using a simple BFS to find reachable areas from player
-    const queue = [{x: playerGridX, z: playerGridZ}];
-    reachable[playerGridZ][playerGridX] = true;
-    
-    // BFS to mark all reachable cells
-    while (queue.length > 0) {
-      const current = queue.shift();
-      const {x, z} = current;
-      
-      // Check all 4 directions
-      const directions = [
-        {dx: 1, dz: 0},
-        {dx: -1, dz: 0},
-        {dx: 0, dz: 1},
-        {dx: 0, dz: -1}
-      ];
-      
-      for (const dir of directions) {
-        const newX = x + dir.dx;
-        const newZ = z + dir.dz;
-        
-        // Check bounds
-        if (newX < 0 || newX >= this.game.map.width || newZ < 0 || newZ >= this.game.map.height) {
-          continue;
-        }
-        
-        // Check if walkable and not visited
-        if (grid[newZ][newX] === 1 && !reachable[newZ][newX]) {
-          reachable[newZ][newX] = true;
-          queue.push({x: newX, z: newZ});
-        }
-      }
-    }
-    
-    // Check each spawn point if it's reachable from player
+    // Keep track of valid spawn points
     const validSpawnPoints = [];
     
-    for (const point of this.spawnPoints) {
-      // Convert spawn point to grid coordinates
-      const gridX = Math.floor((point.x - mapOffsetX) / tileSize);
-      const gridZ = Math.floor((point.z - mapOffsetZ) / tileSize);
+    // Get player position
+    if (!this.game.player || !this.game.player.container) {
+      console.warn('Player not initialized, cannot validate spawn points');
+      return;
+    }
+    
+    const playerPos = this.game.player.container.position.clone();
+    playerPos.y = 0; // Keep on ground level
+    
+    // Check each spawn point
+    for (const spawnPoint of this.spawnPoints) {
+      // First check if the spawn point itself is walkable
+      const isWalkable = this.game.navigationGrid.isWalkable(spawnPoint);
       
-      // Check if this spawn point is in a valid grid cell
-      if (gridX < 0 || gridX >= this.game.map.width || gridZ < 0 || gridZ >= this.game.map.height) {
-        continue;
-      }
-      
-      // Check if this point is reachable from player
-      if (reachable[gridZ][gridX]) {
-        validSpawnPoints.push(point);
+      if (isWalkable) {
+        // Try to find a path from spawn point to player
+        const path = this.game.navigationGrid.findPath(spawnPoint, playerPos);
+        
+        // If path exists, add to valid spawn points
+        if (path && path.length > 0) {
+          validSpawnPoints.push(spawnPoint);
+        }
       }
     }
     
-    // Update spawn points to only include valid ones
-    this.spawnPoints = validSpawnPoints;
+    // Update spawn points with only valid ones
+    if (validSpawnPoints.length > 0) {
+      console.log(`Found ${validSpawnPoints.length} valid spawn points out of ${this.spawnPoints.length}`);
+      this.spawnPoints = validSpawnPoints;
+    } else {
+      console.warn('No valid spawn points found, keeping original spawn points');
+    }
   }
-  
+
+  // Method to start spawning zombies (called from Game.start)
+  startSpawning() {
+    console.log('Starting zombie spawning');
+    // Start with wave 1
+    this.startNewWave(1);
+  }
+
   startNewWave(waveNumber) {
     if (this.isSpawning) return;
     
+    // Store the current wave number
+    this.currentWave = waveNumber;
+
     // Always recalculate spawn points for new waves
     // This ensures they work with procedural maps
     this.determineSpawnPoints();
-    
+
     // Validate spawn points to ensure they have a path to player
     this.validateSpawnPoints();
-    
+
     // If no spawn points were found, create a fallback spawn point
     if (this.spawnPoints.length === 0) {
       this.findFallbackSpawnPoint();
     }
-    
-    // Update debug visualization 
+
+    // Update debug visualization
     this.visualizeSpawnPoints();
-    
+
     // Calculate zombies for this wave
     // Cap the maximum number of zombies per wave to prevent overwhelming numbers
     const baseZombies = this.zombiesPerWave;
     const extraZombies = Math.min((waveNumber - 1) * 5, 50); // Cap extra zombies at 50
     this.zombiesRemaining = baseZombies + extraZombies;
-    
+
+    // Initialize gameState if it doesn't exist
+    if (!this.game.gameState) {
+      console.warn('Game state not initialized, creating it now');
+      this.game.gameState = {
+        zombiesSpawned: 0,
+        zombiesKilled: 0,
+        wave: 1,
+        score: 0
+      };
+    }
+
     // Update game state
     this.game.gameState.zombiesSpawned = 0;
     this.game.gameState.zombiesKilled = 0; // Reset zombies killed counter for new wave
-    
+    this.game.gameState.wave = waveNumber;
+
     // Start spawning
     this.spawnZombies();
   }
-  
+
   spawnZombies() {
     // Set spawning flag
     this.isSpawning = true;
-    
+
+    // Initialize gameState if needed
+    if (!this.game.gameState) {
+      console.warn('Game state not initialized, creating it now');
+      this.game.gameState = {
+        zombiesSpawned: 0,
+        zombiesKilled: 0,
+        wave: 1,
+        score: 0
+      };
+    }
+
+    // Get zombie types for this wave
+    const zombieTypes = this.zombieFactory.getZombieTypesForWave(
+      this.currentWave, 
+      this.zombiesRemaining
+    );
+
     // Spawn mit größerer Verzögerung, damit Zombies mehr Zeit haben
     const spawnInterval = setInterval(() => {
       // Stop if no more zombies to spawn or we hit the max
@@ -309,208 +303,239 @@ export class ZombieManager {
         this.isSpawning = false;
         return;
       }
-      
-      // Spawn a zombie
-      this.spawnZombie();
+
+      // Spawn a zombie with type based on the pre-calculated array
+      const zombieType = zombieTypes[this.zombiesRemaining - 1] || 'standard';
+      this.spawnZombie(zombieType);
       this.zombiesRemaining--;
       this.game.gameState.zombiesSpawned++;
-      
     }, 2000); // Spawn a zombie every 2 seconds instead of 1 second
   }
-  
-  spawnZombie() {
-    // Check if we have any spawn points
+
+  spawnZombie(type = 'standard') {
+    // Skip if at max zombies
+    if (this.zombies.length >= this.maxZombies) {
+      return null;
+    }
+
+    // Check if we have spawn points
     if (this.spawnPoints.length === 0) {
-      console.warn("No spawn points available. Attempting to create fallback spawn points.");
+      console.warn('No spawn points available');
       this.determineSpawnPoints();
-      
-      // Still no spawn points? Use a fallback position
-      if (this.spawnPoints.length === 0) {
-        console.warn("Failed to create spawn points. Using fallback position.");
-        const fallbackPosition = new THREE.Vector3(
-          Math.random() * 20 - 10,
-          0,
-          Math.random() * 20 - 10
-        );
-        
-        const zombie = new Zombie(this.game, this.assetLoader, fallbackPosition);
-        this.game.scene.add(zombie.container);
-        this.zombies.push(zombie);
-        return;
-      }
+      return null;
     }
-    
-    // Pick a random spawn point
-    const spawnPointIndex = Math.floor(Math.random() * this.spawnPoints.length);
-    
-    // Safety check: verify the spawn point is a valid Vector3
-    if (!this.spawnPoints[spawnPointIndex] || !this.spawnPoints[spawnPointIndex].clone) {
-      console.error("Invalid spawn point at index", spawnPointIndex, this.spawnPoints[spawnPointIndex]);
-      // Use a fallback position
-      const fallbackPosition = new THREE.Vector3(
-        Math.random() * 20 - 10,
-        0,
-        Math.random() * 20 - 10
-      );
-      
-      const zombie = new Zombie(this.game, this.assetLoader, fallbackPosition);
-      this.game.scene.add(zombie.container);
-      this.zombies.push(zombie);
-      return;
+
+    // Select a random spawn point
+    const spawnIndex = Math.floor(Math.random() * this.spawnPoints.length);
+    const spawnPoint = this.spawnPoints[spawnIndex];
+
+    // Validate the spawn point with navigation grid
+    let isValidSpawn = true;
+    if (this.game.navigationGrid) {
+      isValidSpawn = this.game.navigationGrid.isWalkable(spawnPoint);
     }
-    
-    const spawnPosition = this.spawnPoints[spawnPointIndex].clone();
-    
-    // Create zombie
-    const zombie = new Zombie(this.game, this.assetLoader, spawnPosition);
-    
-    // Add to game
-    this.game.scene.add(zombie.container);
+
+    // Skip if spawn point is not valid
+    if (!isValidSpawn) {
+      console.warn(`Invalid spawn point at ${spawnPoint.x}, ${spawnPoint.z}`);
+      return null;
+    }
+
+    // Create a new zombie
+    const zombie = new Zombie(this.game, this.assetLoader, spawnPoint, { type });
+
+    // Add to zombies array
     this.zombies.push(zombie);
+
+    // Add to scene
+    this.game.scene.add(zombie.container);
+
+    // Update tracking counters
+    this.zombiesRemaining--;
+    if (this.game.gameState) {
+      this.game.gameState.zombiesSpawned++;
+    }
+
+    return zombie;
   }
-  
+
   update(deltaTime) {
-    // Update all zombies
+    // For performance, limit the number of updates based on current detail level
+    let updateCount = 0;
+    const maxUpdatesPerFrame = 20; // Limit number of full updates
+
+    // Update each zombie's position and actions
     for (let i = this.zombies.length - 1; i >= 0; i--) {
       const zombie = this.zombies[i];
-      
-      // Update zombie
-      zombie.update(deltaTime);
-      
-      // Remove zombie if it's dead and animation is done
+
+      // If zombie is dead and animation is complete, remove it
       if (!zombie.isAlive && zombie.animationComplete) {
+        // Remove from scene
+        this.game.scene.remove(zombie.container);
+        // Remove from array
         this.zombies.splice(i, 1);
+        continue;
+      }
+
+      // Full update for zombies that are close to player or in view
+      if (updateCount < maxUpdatesPerFrame && this.shouldFullyUpdate(zombie)) {
+        zombie.update(deltaTime);
+        updateCount++;
+      } else {
+        // Simplified update for distant zombies (pathfinding only)
+        this.simplifiedUpdate(zombie, deltaTime);
+      }
+    }
+
+    // Check if wave is complete
+    if (!this.isSpawning && this.isWaveComplete()) {
+      this.onWaveComplete();
+    }
+  }
+
+  shouldFullyUpdate(zombie) {
+    // Check if zombie is close to player or in view frustum
+    if (!this.game.player || !this.game.camera) return false;
+
+    const distanceToPlayer = zombie.container.position.distanceTo(this.game.player.container.position);
+    
+    // Always fully update zombies close to player
+    if (distanceToPlayer < 20) return true;
+    
+    // Check if zombie is in view frustum
+    if (!this.game.frustum) return false;
+    
+    // Create a sphere around the zombie for frustum checking
+    const sphere = new THREE.Sphere(zombie.container.position, 1);
+    
+    // Return true if zombie is in view frustum
+    return this.game.frustum.intersectsSphere(sphere);
+  }
+
+  simplifiedUpdate(zombie, deltaTime) {
+    // Just update pathfinding for zombies not in view
+    zombie.updatePathfinding(deltaTime);
+    
+    // Update position, but with simplified physics
+    if (zombie.path.length > 0) {
+      const targetPosition = zombie.path[0];
+      const direction = new THREE.Vector3()
+        .subVectors(targetPosition, zombie.container.position)
+        .normalize();
+      
+      // Move zombie toward target at reduced speed
+      zombie.container.position.add(
+        direction.multiplyScalar(zombie.speed * 0.5 * deltaTime)
+      );
+      
+      // Look at target
+      zombie.container.lookAt(targetPosition);
+      
+      // Check if we've reached the current target point
+      const distanceToTarget = zombie.container.position.distanceTo(targetPosition);
+      if (distanceToTarget < 0.5) {
+        zombie.path.shift(); // Remove the first point from path
       }
     }
   }
-  
+
   clearAllZombies() {
     // Remove all zombies from the scene
     for (const zombie of this.zombies) {
       this.game.scene.remove(zombie.container);
     }
-    
-    // Clear array
+
+    // Clear zombies array
     this.zombies = [];
-    this.zombiesRemaining = 0;
-    this.isSpawning = false;
   }
-  
+
   isWaveComplete() {
-    if (Math.random() < 0.01) { // Nicht zu häufig loggen
-      return false;
-    }
-    
-    // Wave is complete when all zombies are spawned and killed
-    const allZombiesSpawned = this.zombiesRemaining === 0 && !this.isSpawning;
-    
-    // Geändert: Prüfe, ob nur aktuelle Wellenzombies gezählt werden
-    const allZombiesKilled = this.game.gameState.zombiesKilled === this.game.gameState.zombiesSpawned;
-    
-    // Zusätzliche Bedingung: Es müssen mindestens 5 Zombies gespawnt worden sein,
-    // bevor eine Welle als abgeschlossen gelten kann (verhindert zu schnellen Abschluss)
-    const enoughZombiesSpawned = this.game.gameState.zombiesSpawned >= 5;
-    
-    // Zusätzliche Bedingung: Welle kann nicht abgeschlossen sein, wenn keine Zombies gespawnt wurden
-    if (this.game.gameState.zombiesSpawned === 0) {
-      return false;
-    }
-    
-    if (allZombiesSpawned && allZombiesKilled && enoughZombiesSpawned) {
+    // Wave is complete if no zombies are alive and none are waiting to spawn
+    const noLivingZombies = this.zombies.every(zombie => !zombie.isAlive);
+    const noWaitingZombies = this.zombiesRemaining <= 0;
+
+    if (noLivingZombies && noWaitingZombies) {
+      console.log('Wave complete!');
       return true;
     }
-    
     return false;
   }
-  
+
+  onWaveComplete() {
+    // End of wave logic
+    console.log(`Wave ${this.currentWave} complete!`);
+
+    // Update game state
+    if (this.game.gameState) {
+      this.game.gameState.score += 100 * this.currentWave; // Bonus for completing wave
+    }
+
+    // Start next wave after a delay
+    setTimeout(() => {
+      this.startNewWave(this.currentWave + 1);
+    }, 5000); // 5 second break between waves
+  }
+
   findFallbackSpawnPoint() {
-    // Try to find any walkable point far from the player as a last resort
-    const mapWidth = this.game.map.width;
-    const mapHeight = this.game.map.height;
-    
-    // Try corners first
-    const corners = [
-      { x: -mapWidth / 2 + 2, z: -mapHeight / 2 + 2 },
-      { x: mapWidth / 2 - 2, z: -mapHeight / 2 + 2 },
-      { x: -mapWidth / 2 + 2, z: mapHeight / 2 - 2 },
-      { x: mapWidth / 2 - 2, z: mapHeight / 2 - 2 }
-    ];
-    
-    for (const corner of corners) {
-      if (this.isWalkableSpawnPoint(corner.x, corner.z)) {
-        this.spawnPoints.push(corner);
-        return;
+    console.log('Finding fallback spawn points...');
+    // Create a circle of spawn points around the player at a safe distance
+    if (!this.game.player) {
+      console.warn('No player found for fallback spawn points. Using origin.');
+      
+      // Create spawn points in a circle around the origin
+      const radius = 20;
+      const numPoints = 10;
+      
+      for (let i = 0; i < numPoints; i++) {
+        const angle = (i / numPoints) * Math.PI * 2;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        this.addSpawnPoint(x, z);
       }
+      
+      return;
     }
     
-    // If no corners work, try any position
-    for (let i = 0; i < 100; i++) {
-      const x = (Math.random() * mapWidth) - mapWidth / 2;
-      const z = (Math.random() * mapHeight) - mapHeight / 2;
+    // Create spawn points in a circle around the player
+    const playerPos = this.game.player.container.position;
+    const safeRadius = 25; // Distance from player
+    const numPoints = 15;
+    
+    for (let i = 0; i < numPoints; i++) {
+      const angle = (i / numPoints) * Math.PI * 2;
+      const x = playerPos.x + Math.cos(angle) * safeRadius;
+      const z = playerPos.z + Math.sin(angle) * safeRadius;
       
+      // Check if this position is walkable
       if (this.isWalkableSpawnPoint(x, z)) {
-        this.spawnPoints.push({ x, z });
-        return;
+        this.addSpawnPoint(x, z);
       }
     }
     
-    // If all else fails, use a non-walkable point
-    this.spawnPoints.push({ x: mapWidth / 2 - 2, z: mapHeight / 2 - 2 });
+    console.log(`Created ${this.spawnPoints.length} fallback spawn points`);
   }
-  
+
   isWalkableSpawnPoint(x, z) {
-    // Get player position on the grid
-    const playerPosition = this.game.player.container.position;
-    const mapWidth = this.game.map.width;
-    const mapHeight = this.game.map.height;
+    // Check if this is a valid position for a zombie to spawn
+    // For now, just use a basic ground level check
     
-    const playerGridX = Math.floor(playerPosition.x + mapWidth / 2);
-    const playerGridZ = Math.floor(playerPosition.z + mapHeight / 2);
-    
-    // Check if position is walkable using the navigation grid
-    const gridX = Math.floor(x + mapWidth / 2);
-    const gridZ = Math.floor(z + mapHeight / 2);
-    
-    if (!this.game.map.navigationGrid) {
+    // Check if this point is inside a building
+    if (this.game.city && this.game.city.isPositionInBuilding(x, z)) {
       return false;
     }
     
-    // Check if position is within grid bounds
-    if (gridX < 0 || gridX >= mapWidth || gridZ < 0 || gridZ >= mapHeight) {
-      return false;
-    }
-    
-    // Check if the tile is walkable (1 = walkable, 0 = unwalkable)
-    if (this.game.map.navigationGrid[gridZ][gridX] === 0) {
-      return false;
-    }
-    
-    if (this.debugMode) {
-      const surroundingValues = [];
+    // Check if this point is outside the city bounds
+    if (this.game.city) {
+      const citySize = this.game.city.citySize;
+      const cityOffsetX = this.game.city.container.position.x;
+      const cityOffsetZ = this.game.city.container.position.z;
       
-      for (let dy = -1; dy <= 1; dy++) {
-        let rowStr = "";
-        for (let dx = -1; dx <= 1; dx++) {
-          const checkX = playerGridX + dx;
-          const checkZ = playerGridZ + dy;
-          if (checkX >= 0 && checkX < mapWidth && checkZ >= 0 && checkZ < mapHeight) {
-            rowStr += ` ${this.game.map.navigationGrid[checkZ][checkX]}`;
-          } else {
-            rowStr += " X";
-          }
-        }
-        surroundingValues.push(rowStr);
+      if (x < cityOffsetX || x > cityOffsetX + citySize ||
+          z < cityOffsetZ || z > cityOffsetZ + citySize) {
+        return false;
       }
     }
     
-    // Check if the tile is far enough from the player (at least 10 units)
-    const distance = Math.sqrt(
-      Math.pow(playerPosition.x - x, 2) + 
-      Math.pow(playerPosition.z - z, 2)
-    );
-    
-    const minSpawnDistance = 15; // Minimum distance from player to spawn
-    
-    return this.game.map.navigationGrid[gridZ][gridX] > 0 && distance >= minSpawnDistance;
+    return true;
   }
-} 
+}
