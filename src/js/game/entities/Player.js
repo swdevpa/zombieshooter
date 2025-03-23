@@ -40,6 +40,28 @@ export class Player {
     this.setupCollision();
   }
 
+  init() {
+    // Initialize the player
+    console.log('Initializing player');
+    
+    // Initialize weapon manager if not already done
+    if (this.weaponManager) {
+      this.weaponManager.init();
+    }
+    
+    return this;
+  }
+
+  /**
+   * Sets the position of the player
+   * @param {number} x - X coordinate
+   * @param {number} y - Y coordinate 
+   * @param {number} z - Z coordinate
+   */
+  setPosition(x, y, z) {
+    this.container.position.set(x, y, z);
+  }
+
   createMesh() {
     // In first-person mode, we don't need to render the player's mesh
     // but we'll create a very simple one for debugging and potential third-person view

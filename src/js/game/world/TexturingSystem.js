@@ -6,9 +6,16 @@ import * as THREE from 'three';
  * and support for different quality levels.
  */
 export class TexturingSystem {
-  constructor(game) {
+  constructor(game, assetLoader) {
     this.game = game;
-    this.assetLoader = game.assetLoader;
+    this.assetLoader = assetLoader || game.assetLoader;
+    
+    // Define color palettes for buildings
+    this.colorPalettes = {
+      residential: ['#d4b994', '#c2a587', '#b0937a', '#9e826d', '#8c7160'],
+      commercial: ['#8c9db5', '#7a8a9e', '#687787', '#566470', '#445159'],
+      industrial: ['#b5b5b5', '#9e9e9e', '#878787', '#707070', '#595959']
+    };
     
     // Material caches for different building types and destruction levels
     this.buildingMaterials = {
@@ -312,8 +319,8 @@ export class TexturingSystem {
    * Gets the base color for a building type and destruction level
    */
   getBuildingBaseColor(buildingType, destructionLevel) {
-    // Get a base color from the BuildingGenerator color palettes
-    const palette = this.game.buildingGenerator.colorPalettes[buildingType];
+    // Get a base color from our color palettes
+    const palette = this.colorPalettes[buildingType];
     const baseColorHex = palette[Math.floor(Math.random() * palette.length)];
     
     // Convert hex to THREE.Color

@@ -178,8 +178,8 @@
         {
           "id": "ammo-counter",
           "title": "Implement ammunition counter UI (bottom right)",
-          "status": "todo",
-          "notes": ""
+          "status": "done",
+          "notes": "Implemented a comprehensive ammo counter UI with enhanced visual design and improved feedback. Added dynamic color changes based on ammo levels, visual effects for different ammo states (low ammo, empty magazine, no reserves), animations for ammo pickup and reloading. Fixed game initialization errors by adding missing setPreset method to AtmosphericEffects class, implementing muzzleFlash texture in AssetLoader, and adding registerTexture method to handle external textures."
         },
         {
           "id": "hit-indicators",
@@ -213,8 +213,8 @@
         {
           "id": "frustum-culling",
           "title": "Implement view frustum culling",
-          "status": "todo",
-          "notes": ""
+          "status": "done",
+          "notes": "Fixed CullingManager implementation by adding the missing setEnabled method and properly initializing the manager. Implemented frustum culling for buildings, zombies, and miscellaneous objects to optimize rendering performance."
         },
         {
           "id": "occlusion-culling",

@@ -176,95 +176,130 @@ export class UI {
   /**
    * Update ammo display
    * @param {number} current - Current ammo in magazine
-   * @param {number} max - Maximum ammo in magazine
+   * @param {number} max - Maximum ammo capacity
    * @param {number} reserve - Reserve ammo count
    */
   updateAmmo(current, max, reserve = 0) {
-    if (this.ammoValueElement) {
-      this.ammoValueElement.textContent = current;
+    // Make sure all elements exist
+    if (!this.ammoValueElement || !this.ammoMaxElement || !this.ammoReserveElement) {
+      return;
     }
     
-    if (this.ammoMaxElement) {
-      this.ammoMaxElement.textContent = `/ ${max}`;
-    }
+    // Update main ammo counter
+    this.ammoValueElement.textContent = current;
+    this.ammoMaxElement.textContent = `/ ${max}`;
     
-    // Update reserve ammo if element exists
-    if (this.ammoReserveElement) {
-      this.ammoReserveElement.textContent = reserve;
-    }
+    // Update reserve ammo
+    this.ammoReserveElement.textContent = reserve;
     
-    // Show warning when ammo is low
+    // Apply visual effects based on ammo status
     if (this.ammoContainer) {
-      if (current <= Math.ceil(max * 0.25)) {
-        this.ammoContainer.classList.add('low-ammo');
+      // Clear existing classes
+      this.ammoContainer.classList.remove('low-ammo', 'no-ammo', 'no-reserves');
+      
+      // Apply appropriate classes based on ammo state
+      if (current === 0) {
+        this.ammoContainer.classList.add('no-ammo');
+        this.showNoAmmoIndicator();
       } else {
-        this.ammoContainer.classList.remove('low-ammo');
+        this.hideNoAmmoIndicator();
+        
+        // Low ammo warning (25% or less)
+        if (current <= Math.ceil(max * 0.25)) {
+          this.ammoContainer.classList.add('low-ammo');
+          
+          // Pulse the ammo counter more intensely as ammo gets lower
+          const intensity = 1 - (current / (max * 0.25));
+          this.pulseAmmoWarning(intensity);
+        }
       }
       
       // Show empty reserves warning
-      if (reserve <= 0) {
+      if (reserve <= 0 && current < max) {
         this.ammoContainer.classList.add('no-reserves');
-      } else {
-        this.ammoContainer.classList.remove('no-reserves');
       }
-    }
-    
-    // Show reload indicator when empty
-    if (this.reloadIndicator && current === 0 && reserve > 0) {
-      this.showReloadIndicator();
-    }
-  }
-  
-  /**
-   * Show reload indicator
-   */
-  showReloadIndicator() {
-    if (this.reloadIndicator) {
-      this.reloadIndicator.style.display = 'block';
-      this.reloadIndicator.classList.add('active');
-    }
-    
-    if (this.ammoContainer) {
-      this.ammoContainer.classList.add('reloading');
-    }
-  }
-  
-  /**
-   * Hide reload indicator
-   */
-  hideReloadIndicator() {
-    if (this.reloadIndicator) {
-      this.reloadIndicator.classList.remove('active');
-      setTimeout(() => {
-        if (!this.reloadIndicator.classList.contains('active')) {
-          this.reloadIndicator.style.display = 'none';
-        }
-      }, 500); // Fade out duration
-    }
-    
-    if (this.ammoContainer) {
-      this.ammoContainer.classList.remove('reloading');
-    }
-  }
-
-  /**
-   * Animate the reload process
-   */
-  animateReloading() {
-    if (this.ammoContainer) {
-      // Add reloading class for animation
-      this.ammoContainer.classList.add('reloading');
       
-      // Pulse animation for the reload indicator
-      if (this.reloadIndicator) {
-        this.reloadIndicator.classList.add('pulse');
-        
-        // Remove pulse class after animation completes
-        setTimeout(() => {
-          this.reloadIndicator.classList.remove('pulse');
-        }, 1000); // Animation duration
-      }
+      // Apply color based on ammo state
+      this.colorizeAmmoCounter(current, max);
     }
+    
+    // Show reload indicator when empty magazine but has reserve ammo
+    if (current === 0 && reserve > 0) {
+      this.showReloadIndicator();
+    } else if (current > 0) {
+      this.hideReloadIndicator();
+    }
+    
+    // Store previous values for animation effects
+    if (this.prevAmmo !== undefined && current > this.prevAmmo) {
+      this.animateAmmoIncrease();
+    }
+    this.prevAmmo = current;
+  }
+  
+  /**
+   * Apply color to ammo counter based on amount
+   * @param {number} current - Current ammo
+   * @param {number} max - Maximum ammo
+   */
+  colorizeAmmoCounter(current, max) {
+    if (!this.ammoValueElement) return;
+    
+    // Calculate percentage
+    const percentage = current / max;
+    
+    if (percentage <= 0.25) {
+      // Red for low ammo
+      this.ammoValueElement.style.color = '#ff3333';
+    } else if (percentage <= 0.5) {
+      // Orange for medium ammo
+      this.ammoValueElement.style.color = '#ffaa33';
+    } else {
+      // White for healthy ammo
+      this.ammoValueElement.style.color = '#ffffff';
+    }
+  }
+  
+  /**
+   * Apply pulse warning effect to ammo counter
+   * @param {number} intensity - Intensity of the effect (0-1)
+   */
+  pulseAmmoWarning(intensity) {
+    if (!this.ammoValueElement) return;
+    
+    // Scale the text slightly to create a pulse effect
+    const scale = 1 + (0.1 * intensity);
+    this.ammoValueElement.style.transform = `scale(${scale})`;
+    
+    // Reset after a short delay
+    setTimeout(() => {
+      if (this.ammoValueElement) {
+        this.ammoValueElement.style.transform = 'scale(1)';
+      }
+    }, 200);
+  }
+  
+  /**
+   * Animate ammo increase (e.g., when picking up ammo)
+   */
+  animateAmmoIncrease() {
+    if (!this.ammoContainer) return;
+    
+    // Add temporary class for increase animation
+    this.ammoContainer.classList.add('ammo-increased');
+    
+    // Add a small flash effect
+    const flashElement = document.createElement('div');
+    flashElement.className = 'ammo-flash';
+    this.ammoContainer.appendChild(flashElement);
+    
+    // Remove after animation completes
+    setTimeout(() => {
+      this.ammoContainer.classList.remove('ammo-increased');
+      if (flashElement && flashElement.parentNode) {
+        flashElement.parentNode.removeChild(flashElement);
+      }
+    }, 500);
   }
 
   showGameOver(score) {
@@ -1309,6 +1344,58 @@ export class UI {
           `;
           document.head.appendChild(style);
         }
+      }
+    }
+  }
+
+  /**
+   * Show reload indicator
+   */
+  showReloadIndicator() {
+    if (this.reloadIndicator) {
+      this.reloadIndicator.style.display = 'block';
+      this.reloadIndicator.classList.add('active');
+    }
+    
+    if (this.ammoContainer) {
+      this.ammoContainer.classList.add('reloading');
+    }
+  }
+  
+  /**
+   * Hide reload indicator
+   */
+  hideReloadIndicator() {
+    if (this.reloadIndicator) {
+      this.reloadIndicator.classList.remove('active');
+      setTimeout(() => {
+        if (!this.reloadIndicator.classList.contains('active')) {
+          this.reloadIndicator.style.display = 'none';
+        }
+      }, 500); // Fade out duration
+    }
+    
+    if (this.ammoContainer) {
+      this.ammoContainer.classList.remove('reloading');
+    }
+  }
+  
+  /**
+   * Animate the reload process
+   */
+  animateReloading() {
+    if (this.ammoContainer) {
+      // Add reloading class for animation
+      this.ammoContainer.classList.add('reloading');
+      
+      // Pulse animation for the reload indicator
+      if (this.reloadIndicator) {
+        this.reloadIndicator.classList.add('pulse');
+        
+        // Remove pulse class after animation completes
+        setTimeout(() => {
+          this.reloadIndicator.classList.remove('pulse');
+        }, 1000); // Animation duration
       }
     }
   }

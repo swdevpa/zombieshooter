@@ -481,7 +481,7 @@ export class CullingManager {
   }
 
   // Hilfsmethoden zur Steuerung des Cullings
-  setCullingEnabled(enabled) {
+  setEnabled(enabled) {
     this.config.enabled = enabled;
 
     // Mache alles sichtbar, wenn Culling deaktiviert wird
@@ -489,7 +489,14 @@ export class CullingManager {
       this.showEverything();
     } else {
       // Sofort Culling durchführen
-      this.performCulling();
+      const playerPosition = this.game.player
+        ? this.game.player.container.position.clone()
+        : new THREE.Vector3();
+        
+      if (this.game.camera) {
+        const frustum = this.calculateFrustum(this.game.camera);
+        this.performCulling(frustum, playerPosition);
+      }
     }
   }
 
@@ -526,7 +533,15 @@ export class CullingManager {
     this.config.viewDistance = distance;
     // Sofortiges Update erzwingen
     this.lastPlayerPosition.set(0, 0, 0);
-    this.performCulling();
+    
+    // Perform culling with current camera
+    if (this.game.camera) {
+      const playerPosition = this.game.player
+        ? this.game.player.container.position.clone()
+        : new THREE.Vector3();
+      const frustum = this.calculateFrustum(this.game.camera);
+      this.performCulling(frustum, playerPosition);
+    }
   }
 
   setDebugMode(enabled) {

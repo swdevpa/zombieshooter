@@ -92,50 +92,40 @@ export class AssetLoader {
   }
 
   async createTextures() {
-    const startTime = performance.now();
-
-    // Count total textures for progress tracking
-    this.totalAssets = 15; // Current number of texture generation methods
-
-    try {
-      // Create all textures with progress tracking
-      await this._createTextureWithProgress('player', this.createPlayerTexture.bind(this));
-      await this._createTextureWithProgress('playerHead', this.createPlayerHeadTexture.bind(this));
-      await this._createTextureWithProgress('weapon', this.createWeaponTexture.bind(this));
-      await this._createTextureWithProgress('grass', this.createGrassTexture.bind(this));
-      await this._createTextureWithProgress('water', this.createWaterTexture.bind(this));
-      await this._createTextureWithProgress('dirt', this.createDirtTexture.bind(this));
-      await this._createTextureWithProgress('stone', this.createStoneTexture.bind(this));
-      await this._createTextureWithProgress('wall', this.createWallTexture.bind(this));
-      await this._createTextureWithProgress('wood', this.createWoodTexture.bind(this));
-      await this._createTextureWithProgress('tree', this.createTreeTexture.bind(this));
-      await this._createTextureWithProgress('zombie', this.createZombieTexture.bind(this));
-      await this._createTextureWithProgress('zombieHead', this.createZombieHeadTexture.bind(this));
-      await this._createTextureWithProgress('bullet', this.createBulletTexture.bind(this));
-      await this._createTextureWithProgress('ground', this.createGroundTexture.bind(this));
-      await this._createTextureWithProgress('path', this.createPathTexture.bind(this));
-
-      const endTime = performance.now();
-
-      // Setze Eigenschaften für alle Texturen
-      this.setupTextureProperties();
-
-      console.log(
-        `All textures created programmatically in ${(endTime - startTime).toFixed(2)}ms:`,
-        Object.keys(this.textures)
-      );
-
-      return true;
-    } catch (error) {
-      console.error('Error creating textures:', error);
-      this.loadingErrors.push({
-        type: 'textures',
-        message: error.message,
-        stack: error.stack,
-      });
-
-      return false;
-    }
+    console.log('Starting texture creation process...');
+    const textureTimerStart = performance.now();
+    
+    const textures = [
+      'player', 
+      'playerHead',
+      'weapon',
+      'grass', 
+      'water',
+      'dirt',
+      'stone',
+      'wall',
+      'wood',
+      'tree',
+      'zombie',
+      'zombieHead',
+      'bullet',
+      'ground',
+      'path',
+      'muzzleFlash'  // Added muzzleFlash to the list
+    ];
+    
+    // Create a promise for each texture
+    const texturePromises = textures.map(name => 
+      this._createTextureWithProgress(name, () => this[`create${name.charAt(0).toUpperCase() + name.slice(1)}Texture`]())
+    );
+    
+    // Wait for all textures to be created
+    await Promise.all(texturePromises);
+    
+    const textureTimerEnd = performance.now();
+    console.log(`All textures created programmatically in ${(textureTimerEnd - textureTimerStart).toFixed(2)}ms:`, textures);
+    
+    return this.textures;
   }
 
   async _createTextureWithProgress(name, createFn) {
@@ -866,50 +856,130 @@ export class AssetLoader {
     canvas.width = this.textureSize;
     canvas.height = this.textureSize;
     const ctx = canvas.getContext('2d');
-
-    // Hintergrund löschen (transparent)
+    
+    // Hintergrund transparent
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Metallischer Farbverlauf für die Patrone
-    const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
-    gradient.addColorStop(0, '#D4AF37'); // Gold
-    gradient.addColorStop(0.4, '#FFF8DC'); // Hellgold
-    gradient.addColorStop(0.6, '#FFF8DC'); // Hellgold
-    gradient.addColorStop(1, '#D4AF37'); // Gold
-
-    // Hauptteil der Patrone
+    
+    // Bullet-Body (Patronenhülse)
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    
+    // Gradient für metallischen Look
+    const gradient = ctx.createLinearGradient(centerX - 15, centerY, centerX + 15, centerY);
+    gradient.addColorStop(0, '#BCA282');     // Dunkles Messing
+    gradient.addColorStop(0.3, '#FFD700');   // Gold/Messing
+    gradient.addColorStop(0.7, '#BCA282');   // Dunkles Messing
+    gradient.addColorStop(1, '#FFD700');     // Gold/Messing
+    
+    // Patrone zeichnen
     ctx.fillStyle = gradient;
-    ctx.fillRect(canvas.width * 0.2, canvas.height * 0.3, canvas.width * 0.6, canvas.height * 0.6);
-
-    // Geschossspitze
-    ctx.fillStyle = '#B87333'; // Kupfer
     ctx.beginPath();
-    ctx.moveTo(canvas.width * 0.5, canvas.height * 0.1);
-    ctx.lineTo(canvas.width * 0.3, canvas.height * 0.3);
-    ctx.lineTo(canvas.width * 0.7, canvas.height * 0.3);
-    ctx.closePath();
+    ctx.arc(centerX, centerY, 10, 0, Math.PI * 2);
     ctx.fill();
-
-    // Patronenboden
-    ctx.fillStyle = '#8B4513'; // Dunkelbraun
-    ctx.fillRect(canvas.width * 0.3, canvas.height * 0.9, canvas.width * 0.4, canvas.height * 0.1);
-
-    // Zündhütchen
-    ctx.fillStyle = '#C0C0C0'; // Silber
+    
+    // Spitze (Geschoss)
+    const bulletGradient = ctx.createLinearGradient(centerX - 8, centerY, centerX + 8, centerY);
+    bulletGradient.addColorStop(0, '#777');
+    bulletGradient.addColorStop(0.5, '#AAA');
+    bulletGradient.addColorStop(1, '#777');
+    
+    ctx.fillStyle = bulletGradient;
     ctx.beginPath();
-    ctx.arc(canvas.width * 0.5, canvas.height * 0.95, canvas.width * 0.06, 0, Math.PI * 2);
+    ctx.arc(centerX, centerY, 6, 0, Math.PI * 2);
     ctx.fill();
-
-    // Glanzeffekt
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.lineWidth = 2;
+    
+    // Glanzlichter
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
     ctx.beginPath();
-    ctx.moveTo(canvas.width * 0.3, canvas.height * 0.4);
-    ctx.lineTo(canvas.width * 0.3, canvas.height * 0.85);
-    ctx.stroke();
-
+    ctx.arc(centerX - 3, centerY - 3, 2, 0, Math.PI * 2);
+    ctx.fill();
+    
     this.textures['bullet'] = new THREE.CanvasTexture(canvas);
     return this.textures['bullet'];
+  }
+  
+  /**
+   * Creates a muzzle flash texture for weapon effects
+   * @returns {THREE.Texture} The created texture
+   */
+  createMuzzleFlashTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+    
+    // Clear background to transparent
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = canvas.width / 4;
+    
+    // Create radial gradient for the flash
+    const gradient = ctx.createRadialGradient(
+      centerX, centerY, 0,
+      centerX, centerY, radius * 1.5
+    );
+    
+    // Bright center fading to transparent
+    gradient.addColorStop(0, 'rgba(255, 255, 200, 1)');    // Bright yellow-white center
+    gradient.addColorStop(0.2, 'rgba(255, 200, 50, 0.9)');  // Orange-yellow
+    gradient.addColorStop(0.5, 'rgba(255, 100, 20, 0.6)');  // Orange-red
+    gradient.addColorStop(1, 'rgba(200, 50, 0, 0)');       // Transparent red edge
+    
+    // Draw the main flash circle
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Add some random "sparks" around the main flash
+    for (let i = 0; i < 20; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = radius * (0.7 + Math.random() * 0.6);
+      const sparkX = centerX + Math.cos(angle) * distance;
+      const sparkY = centerY + Math.sin(angle) * distance;
+      const sparkSize = 1 + Math.random() * 3;
+      
+      // Vary the spark color
+      const alpha = 0.4 + Math.random() * 0.6;
+      ctx.fillStyle = `rgba(255, ${150 + Math.random() * 100}, 0, ${alpha})`;
+      
+      ctx.beginPath();
+      ctx.arc(sparkX, sparkY, sparkSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Add a few longer streaks/rays
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const length = radius * (1 + Math.random() * 0.5);
+      const width = 3 + Math.random() * 5;
+      
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(angle);
+      
+      // Create gradient for the ray
+      const rayGradient = ctx.createLinearGradient(0, 0, length, 0);
+      rayGradient.addColorStop(0, 'rgba(255, 255, 200, 0.9)');
+      rayGradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
+      
+      ctx.fillStyle = rayGradient;
+      ctx.beginPath();
+      ctx.moveTo(0, -width/2);
+      ctx.lineTo(length, 0);
+      ctx.lineTo(0, width/2);
+      ctx.closePath();
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    this.textures['muzzleFlash'] = new THREE.CanvasTexture(canvas);
+    this.textures['muzzleFlash'].transparent = true;
+    
+    return this.textures['muzzleFlash'];
   }
 
   // Boden Textur
@@ -1054,6 +1124,30 @@ export class AssetLoader {
       console.warn(`Texture '${name}' not found, using fallback`);
       return this.createFallbackTexture(name);
     }
+  }
+  
+  /**
+   * Register an externally created texture with the asset loader
+   * @param {string} name - The name to register the texture under
+   * @param {THREE.Texture} texture - The texture to register
+   * @returns {THREE.Texture} - The registered texture
+   */
+  registerTexture(name, texture) {
+    if (!name || !texture) {
+      console.error('Cannot register texture: Invalid name or texture object');
+      return null;
+    }
+    
+    // Store the texture in the textures map
+    this.textures[name] = texture;
+    
+    // Apply standard texture properties
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.colorSpace = THREE.SRGBColorSpace;
+    
+    console.log(`Registered external texture: ${name}`);
+    return texture;
   }
 
   createGenericTexture(name) {

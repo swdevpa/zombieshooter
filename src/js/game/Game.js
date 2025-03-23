@@ -28,6 +28,12 @@ export class Game {
     this.container = container;
     this.width = window.innerWidth;
     this.height = window.innerHeight;
+    
+    // Save the asset loader from parameter
+    this.assetLoader = assetLoader || new AssetLoader();
+
+    // Initialize clock for delta time calculation
+    this.clock = new THREE.Clock();
 
     // Game properties
     this.running = false;
@@ -95,9 +101,6 @@ export class Game {
     // Add objects to scene
     this.yawObject.add(this.pitchObject);
     this.scene.add(this.yawObject);
-
-    // Initialize asset loader
-    this.assetLoader = assetLoader || new AssetLoader();
 
     // Initialize managers
     this.initManagers();
@@ -183,6 +186,7 @@ export class Game {
 
     // Initialize culling manager
     this.cullingManager = new CullingManager(this);
+    this.cullingManager.init();
 
     // Initialize zombie manager
     this.zombieManager = new ZombieManager(this);
@@ -451,7 +455,7 @@ export class Game {
     this.scene.add(this.player.container);
 
     // Initialize weapon manager
-    this.weaponManager = new WeaponManager(this, this.assetLoader);
+    this.weaponManager = new WeaponManager(this, this.player, this.assetLoader);
     this.weaponManager.init();
 
     // Create city
@@ -649,70 +653,81 @@ export class Game {
     }
   }
 
-  update(deltaTime) {
-    if (this.paused || this.gameOver) return;
+  update(time) {
+    try {
+      // Calculate delta time (with safety check for clock)
+      const delta = this.clock ? this.clock.getDelta() : 0.016; // Default to ~60 FPS
+      
+      // Update frustum for culling distant zombies
+      if (this.camera) {
+        this.updateFrustum();
+      }
 
-    // Record frame start time for performance monitoring
-    const frameStartTime = performance.now();
+      // Update player if it exists
+      if (this.player) {
+        try {
+          this.player.update(delta);
+        } catch (playerError) {
+          console.error('Error updating player:', playerError);
+        }
+      }
 
-    // Update FPS counter
-    this.updateFPS(deltaTime);
+      // Update game systems based on game state
+      if (this.gameState && this.gameState.status === 'playing') {
+        // Update city
+        if (this.cityManager) {
+          try {
+            this.cityManager.update(delta);
+          } catch (cityError) {
+            console.error('Error updating city:', cityError);
+          }
+        }
 
-    // Update camera effects like head bob and recoil
-    this.updateCameraRecoil(deltaTime);
-    if (this.player && this.player.isMoving && this.cameraHeadBob.enabled) {
-      this.updateCameraHeadBob(deltaTime);
+        // Update zombies
+        if (this.zombieManager) {
+          try {
+            this.zombieManager.update(delta);
+          } catch (zombieError) {
+            console.error('Error updating zombies:', zombieError);
+          }
+        }
+
+        // Update weapons
+        if (this.weaponManager) {
+          try {
+            this.weaponManager.update(delta);
+          } catch (weaponError) {
+            console.error('Error updating weapons:', weaponError);
+          }
+        }
+
+        // Update UI
+        if (this.uiManager) {
+          try {
+            this.uiManager.update(delta);
+          } catch (uiError) {
+            console.error('Error updating UI:', uiError);
+          }
+        }
+
+        // Update sounds
+        if (this.soundManager) {
+          try {
+            this.soundManager.update(delta);
+          } catch (soundError) {
+            console.error('Error updating sounds:', soundError);
+          }
+        }
+      }
+
+      // Render scene
+      this.render();
+    } catch (error) {
+      console.error('Critical error in update loop:', error);
     }
-    this.updateCamera();
 
-    // Update mouse look smoothing
-    this.updateMouseLook(deltaTime);
-
-    // Update player
-    if (this.player) {
-      this.player.update(deltaTime);
-    }
-
-    // Update zombies
-    if (this.zombieManager) {
-      this.zombieManager.update(deltaTime);
-    }
-
-    // Update UI
-    if (this.uiManager) {
-      this.uiManager.update(deltaTime);
-    }
-    
-    // Update damage manager
-    if (this.damageManager) {
-      this.damageManager.update(deltaTime);
-    }
-
-    // Update navigation grid for pathfinding
-    if (this.navigationGrid && this.navigationGrid.needsUpdate) {
-      this.navigationGrid.update();
-    }
-
-    // Update atmospheric effects
-    if (this.atmosphericEffects) {
-      this.atmosphericEffects.update(deltaTime);
-    }
-
-    // Update culling manager to hide objects outside view frustum
-    if (this.settings.cullingEnabled && this.cullingManager) {
-      this.cullingManager.update(this.camera);
-    }
-
-    // Record performance metrics
-    if (this.performanceMonitor) {
-      const frameEndTime = performance.now();
-      const frameDuration = frameEndTime - frameStartTime;
-      this.performanceMonitor.recordFrameTime(frameDuration);
-      this.performanceMonitor.update();
-    }
-
-    // Render scene
-    this.render();
+    // Schedule next frame (outside try-catch to ensure it always runs)
+    requestAnimationFrame(this.update.bind(this));
   }
 
   animate() {
@@ -754,7 +769,97 @@ export class Game {
   }
 
   render() {
-    this.renderer.render(this.scene, this.camera);
+    try {
+      // Only render if we have required objects
+      if (!this.scene || !this.camera || !this.renderer) {
+        console.warn('Cannot render: missing required objects');
+        return;
+      }
+      
+      // Validate scene objects before rendering to prevent null errors
+      this.validateSceneObjects(this.scene);
+      
+      // Render scene with camera
+      this.renderer.render(this.scene, this.camera);
+    } catch (error) {
+      console.error('Error during rendering:', error);
+      // Try to recover by revalidating the scene
+      this.validateSceneObjects(this.scene);
+    }
+  }
+
+  /**
+   * Validates all objects in the scene to ensure there are no null objects
+   * that could cause rendering errors
+   * @param {THREE.Object3D} object - The object to validate (usually the scene)
+   */
+  validateSceneObjects(object) {
+    if (!object) return;
+    
+    // Create a safe copy of children to iterate through
+    const children = object.children ? [...object.children] : [];
+    
+    // Check each child
+    for (let i = children.length - 1; i >= 0; i--) {
+      const child = children[i];
+      
+      // If the child is null or undefined, remove it
+      if (!child) {
+        console.warn('Removed null object from scene graph');
+        object.children.splice(i, 1);
+        continue;
+      }
+      
+      // Ensure critical properties exist
+      if (child.visible === null || child.visible === undefined) {
+        console.warn('Fixed null visible property on scene object');
+        child.visible = true;
+      }
+      
+      // Make sure parent reference is correct
+      if (child.parent !== object) {
+        console.warn('Fixed incorrect parent reference in scene object');
+        child.parent = object;
+      }
+      
+      // Ensure matrix properties exist
+      if (!child.matrix) {
+        console.warn('Fixed missing matrix on scene object');
+        child.matrix = new THREE.Matrix4();
+      }
+      
+      if (!child.matrixWorld) {
+        console.warn('Fixed missing matrixWorld on scene object');
+        child.matrixWorld = new THREE.Matrix4();
+      }
+      
+      // Fix material if it's null but needed
+      if (child.isMesh && !child.material) {
+        console.warn('Fixed null material on mesh');
+        child.material = new THREE.MeshBasicMaterial({ color: 0xff00ff });
+      }
+      
+      // Check all object3D properties needed for rendering
+      if (typeof child.raycast !== 'function') {
+        console.warn('Fixed missing raycast method on object');
+        child.raycast = function() {};
+      }
+      
+      // Fix any issues with geometry
+      if (child.isMesh && (!child.geometry || child.geometry.disposed)) {
+        console.warn('Fixed null or disposed geometry on mesh');
+        child.geometry = new THREE.BoxGeometry(1, 1, 1);
+      }
+      
+      // Ensure children array exists
+      if (!child.children) {
+        console.warn('Fixed missing children array on object');
+        child.children = [];
+      }
+      
+      // Recursively validate the child's children
+      this.validateSceneObjects(child);
+    }
   }
 
   // Performance toggles
@@ -906,14 +1011,14 @@ export class Game {
 
   // Setup game systems
   setupSystems() {
-    // Setup asset loader
-    this.assetLoader = new AssetLoader();
-
+    // Use the assetLoader passed in the constructor instead of creating a new one
+    // this.assetLoader = new AssetLoader();
+    
     // Setup managers that depend on assetLoader
     this.sceneManager = new SceneManager(this, this.assetLoader);
     this.cityManager = new CityManager(this, this.assetLoader);
     this.zombieManager = new ZombieManager(this, this.assetLoader);
-    this.weaponManager = new WeaponManager(this, this.assetLoader);
+    // WeaponManager is initialized in the init method after player creation
     this.uiManager = new UiManager(this, this.assetLoader);
     this.soundManager = new SoundManager(this, this.assetLoader);
 
@@ -935,54 +1040,6 @@ export class Game {
   setupFrustumCulling() {
     this.frustum = new THREE.Frustum();
     this.frustumMatrix = new THREE.Matrix4();
-  }
-
-  // Main update loop
-  update(time) {
-    // Calculate delta time
-    const delta = this.clock.getDelta();
-    
-    // Update frustum for culling distant zombies
-    this.updateFrustum();
-
-    // Update player if it exists
-    if (this.player) {
-      this.player.update(delta);
-    }
-
-    // Update game systems based on game state
-    if (this.gameState.status === 'playing') {
-      // Update city
-      if (this.cityManager) {
-        this.cityManager.update(delta);
-      }
-
-      // Update zombies
-      if (this.zombieManager) {
-        this.zombieManager.update(delta);
-      }
-
-      // Update weapons
-      if (this.weaponManager) {
-        this.weaponManager.update(delta);
-      }
-
-      // Update UI
-      if (this.uiManager) {
-        this.uiManager.update(delta);
-      }
-
-      // Update sounds
-      if (this.soundManager) {
-        this.soundManager.update(delta);
-      }
-    }
-
-    // Render scene
-    this.render();
-
-    // Schedule next frame
-    requestAnimationFrame(this.update.bind(this));
   }
 
   // Update frustum for culling

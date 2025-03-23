@@ -29,6 +29,18 @@ export class WeaponManager {
    * Initialize the weapon manager
    */
   init() {
+    // Ensure player exists before creating weapons
+    if (!this.player) {
+      console.error('WeaponManager initialization failed: Player not set');
+      return this;
+    }
+    
+    // Ensure assetLoader has loaded textures
+    if (!this.assetLoader || !this.assetLoader.textures || !this.assetLoader.textures.weapon) {
+      console.error('WeaponManager initialization failed: Weapon texture not loaded');
+      return this;
+    }
+    
     // Create default weapons
     this.createDefaultWeapons();
     

@@ -272,6 +272,33 @@ export class AtmosphericEffects {
     };
   }
   
+  /**
+   * Sets a preset for time of day and applies all visual effects
+   * @param {string} preset - The preset name ('dawn', 'day', 'dusk', 'night')
+   */
+  setPreset(preset) {
+    // Apply the preset settings
+    this.applyTimeOfDayPreset(preset);
+    
+    // Update the time of day setting
+    this.settings.timeOfDay = preset;
+    
+    // Update all visual components
+    this.setupFog();
+    this.setupSky();
+    this.setupLighting();
+    
+    // If dust particles are enabled, update them
+    if (this.settings.dustParticlesEnabled && this.dustParticles) {
+      // Remove existing particles
+      this.scene.remove(this.dustParticles);
+      // Setup new particles with updated settings
+      this.setupDustParticles();
+    }
+    
+    return this;
+  }
+  
   update(deltaTime) {
     // Skip if paused
     if (this.game.paused) return;

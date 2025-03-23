@@ -140,13 +140,16 @@
       background-color: rgba(0, 0, 0, 0.5);
       border: 2px solid #fff;
       border-radius: 5px;
-      padding: 5px 10px;
+      padding: 10px 15px;
       font-family: 'Courier New', monospace;
       color: white;
       font-weight: bold;
       text-align: center;
-      min-width: 100px;
+      min-width: 120px;
       transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
     #ammo-container.low-ammo {
       border-color: #ffaa33;
@@ -162,6 +165,80 @@
     #ammo-container.reloading {
       border-color: #3399ff;
       animation: reload-pulse 2s infinite;
+    }
+    #ammo-container.ammo-increased {
+      border-color: #66ff66;
+      animation: ammo-pulse 0.5s;
+    }
+    #ammo-icon {
+      margin-right: 8px;
+      width: 20px;
+      height: 20px;
+      background-color: #fff;
+      clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+      display: inline-block;
+      vertical-align: middle;
+    }
+    #ammo-display {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 5px;
+    }
+    #ammo-value {
+      font-size: 28px;
+      display: inline-block;
+      font-family: 'Arial', sans-serif;
+      text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+    }
+    #ammo-max {
+      font-size: 18px;
+      opacity: 0.8;
+      display: inline-block;
+      margin-left: 5px;
+    }
+    #ammo-reserve-container {
+      margin-top: 5px;
+      font-size: 14px;
+      opacity: 0.9;
+      background-color: rgba(0, 0, 0, 0.3);
+      padding: 3px 8px;
+      border-radius: 3px;
+    }
+    #ammo-reserve-label {
+      font-size: 12px;
+      color: #aaccff;
+      margin-right: 5px;
+    }
+    #ammo-reserve {
+      font-size: 18px;
+      color: #aaccff;
+    }
+    #reload-indicator {
+      color: #ffaa33;
+      font-size: 14px;
+      margin-top: 5px;
+      display: none;
+      transition: opacity 0.5s ease;
+      background-color: rgba(0, 0, 0, 0.6);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    #reload-indicator.active {
+      animation: blink 1s infinite;
+    }
+    #no-ammo-indicator {
+      color: #ff3333;
+      font-size: 14px;
+      display: none;
+      transition: opacity 0.5s ease;
+      margin-top: 5px;
+      background-color: rgba(0, 0, 0, 0.6);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    #no-ammo-indicator.active {
+      animation: blink 1s infinite;
     }
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(255, 170, 51, 0.4); }
@@ -180,47 +257,19 @@
       75% { transform: translateX(-5px); }
       100% { transform: translateX(0); }
     }
-    #ammo-value {
-      font-size: 24px;
-      display: inline-block;
-    }
-    #ammo-max {
-      font-size: 16px;
-      opacity: 0.8;
-      display: inline-block;
-      margin-left: 5px;
-    }
-    #ammo-reserve-container {
-      margin-top: 2px;
-      font-size: 14px;
-      opacity: 0.7;
-    }
-    #ammo-reserve {
-      font-size: 18px;
-      color: #aaccff;
-    }
-    #reload-indicator {
-      color: #ffaa33;
-      font-size: 14px;
-      display: none;
-      transition: opacity 0.5s ease;
-    }
-    #reload-indicator.active {
-      animation: blink 1s infinite;
-    }
-    #no-ammo-indicator {
-      color: #ff3333;
-      font-size: 14px;
-      display: none;
-      transition: opacity 0.5s ease;
-    }
-    #no-ammo-indicator.active {
-      animation: blink 1s infinite;
-    }
     @keyframes blink {
       0% { opacity: 1; }
       50% { opacity: 0.3; }
       100% { opacity: 1; }
+    }
+    @keyframes ammo-pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+    @keyframes flash-fade {
+      0% { opacity: 0.7; }
+      100% { opacity: 0; }
     }
     /* Ammo pickup indicator */
     #ammo-pickup-indicator {
@@ -307,6 +356,17 @@
       background-color: #333;
       margin: 0 3px;
     }
+    .ammo-flash {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(100, 255, 100, 0.4);
+      border-radius: 4px;
+      animation: flash-fade 0.5s forwards;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -339,13 +399,17 @@
     <div id="health-text">100</div>
   </div>
   <div id="ammo-container">
-    <div id="ammo-value">30</div>
-    <div id="ammo-max">/ 30</div>
-    <div id="ammo-reserve-container">
-      <div id="ammo-reserve">90</div>
+    <div id="ammo-display">
+      <div id="ammo-icon"></div>
+      <span id="ammo-value">30</span>
+      <span id="ammo-max">/ 30</span>
     </div>
-    <div id="reload-indicator">RELOADING</div>
-    <div id="no-ammo-indicator" style="display: none;">NO AMMO</div>
+    <div id="ammo-reserve-container">
+      <span id="ammo-reserve-label">RESERVE</span>
+      <span id="ammo-reserve">120</span>
+    </div>
+    <div id="reload-indicator">RELOAD [R]</div>
+    <div id="no-ammo-indicator">NO AMMO</div>
   </div>
   <div id="crosshair">
     <div id="crosshair-outer"></div>
