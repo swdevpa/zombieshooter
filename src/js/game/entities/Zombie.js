@@ -86,6 +86,9 @@ export class Zombie {
     // Create container
     this.container = new THREE.Group();
 
+    // Add reference to zombie in container userData
+    this.container.userData.zombieRef = this;
+
     // Create zombie model using factory
     this.createZombieModel();
 
@@ -98,6 +101,9 @@ export class Zombie {
     
     // Set a reference position for logging/debugging
     this.lastKnownValidPosition = this.position.clone();
+
+    // Track if zombie is occluded (hidden by buildings)
+    this.isOccluded = false;
   }
 
   /**
@@ -166,9 +172,19 @@ export class Zombie {
 
   update(deltaTime) {
     if (!this.isAlive) {
-      // Only update animation for dead zombies
-      if (this.model) {
-        this.model.update(deltaTime);
+      // Update death animation/timer
+      this.updateDeath(deltaTime);
+      return;
+    }
+    
+    // Skip updates for occluded zombies to improve performance
+    // Except pathfinding - we want zombies to still navigate around buildings
+    if (this.isOccluded && !this.isAttacking && this.distanceToPlayer > 10) {
+      // Still update path at a reduced rate for occluded zombies
+      this.pathUpdateTimer += deltaTime;
+      if (this.pathUpdateTimer > this.pathUpdateInterval * 3) { // 3x slower updates for occluded zombies
+        this.pathUpdateTimer = 0;
+        this.updatePath();
       }
       return;
     }

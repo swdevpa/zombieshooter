@@ -2345,4 +2345,131 @@ export class UI {
       this.game.soundManager.playSfx(soundId, { category: 'ui' });
     }
   }
+
+  setupDebugUI() {
+    // Create debug controls container if it doesn't exist
+    if (!this.debugContainer) {
+      this.debugContainer = document.createElement('div');
+      this.debugContainer.id = 'debug-controls';
+      this.debugContainer.style.position = 'absolute';
+      this.debugContainer.style.top = '10px';
+      this.debugContainer.style.right = '10px';
+      this.debugContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+      this.debugContainer.style.padding = '10px';
+      this.debugContainer.style.borderRadius = '5px';
+      this.debugContainer.style.color = 'white';
+      this.debugContainer.style.fontFamily = 'monospace';
+      this.debugContainer.style.fontSize = '12px';
+      this.debugContainer.style.zIndex = '1000';
+      this.debugContainer.style.display = 'none'; // Hidden by default
+      this.gameContainer.appendChild(this.debugContainer);
+    }
+
+    // Clear existing controls
+    this.debugContainer.innerHTML = '<h3>Debug Controls</h3>';
+
+    // FPS Display
+    this.fpsDisplay = document.createElement('div');
+    this.fpsDisplay.id = 'fps-display';
+    this.fpsDisplay.innerHTML = 'FPS: --';
+    this.debugContainer.appendChild(this.fpsDisplay);
+
+    // Culling Toggle
+    const cullingToggle = document.createElement('div');
+    cullingToggle.innerHTML = '<button id="toggle-frustum-culling">Toggle Frustum Culling</button>';
+    cullingToggle.querySelector('button').addEventListener('click', () => {
+      if (this.game.cullingManager) {
+        const enabled = !this.game.cullingManager.config.enabled;
+        this.game.cullingManager.setEnabled(enabled);
+        cullingToggle.querySelector('button').textContent = 
+          `Toggle Frustum Culling (${enabled ? 'ON' : 'OFF'})`;
+      }
+    });
+    this.debugContainer.appendChild(cullingToggle);
+    
+    // Occlusion Culling Toggle
+    const occlusionToggle = document.createElement('div');
+    occlusionToggle.innerHTML = '<button id="toggle-occlusion-culling">Toggle Occlusion Culling</button>';
+    occlusionToggle.querySelector('button').addEventListener('click', () => {
+      if (this.game.cullingManager && this.game.cullingManager.setOcclusionCullingEnabled) {
+        const enabled = !this.game.cullingManager.config.occlusionCulling;
+        this.game.cullingManager.setOcclusionCullingEnabled(enabled);
+        occlusionToggle.querySelector('button').textContent = 
+          `Toggle Occlusion Culling (${enabled ? 'ON' : 'OFF'})`;
+      }
+    });
+    this.debugContainer.appendChild(occlusionToggle);
+
+    // Debug Visualization Toggle
+    const debugVisualizationToggle = document.createElement('div');
+    debugVisualizationToggle.innerHTML = '<button id="toggle-debug-visualization">Toggle Debug Visualization</button>';
+    debugVisualizationToggle.querySelector('button').addEventListener('click', () => {
+      if (this.game.cullingManager) {
+        const enabled = !this.game.cullingManager.config.debugMode;
+        this.game.cullingManager.setDebugMode(enabled);
+        debugVisualizationToggle.querySelector('button').textContent = 
+          `Toggle Debug Visualization (${enabled ? 'ON' : 'OFF'})`;
+      }
+    });
+    this.debugContainer.appendChild(debugVisualizationToggle);
+
+    // Quality Settings
+    const qualitySelect = document.createElement('div');
+    qualitySelect.innerHTML = `
+      <label for="quality-select">Quality: </label>
+      <select id="quality-select">
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+        <option value="ultra">Ultra</option>
+      </select>
+    `;
+    qualitySelect.querySelector('select').value = this.game.settings.qualityLevel;
+    qualitySelect.querySelector('select').addEventListener('change', (e) => {
+      this.game.settings.qualityLevel = e.target.value;
+      this.game.applyQualitySettings();
+    });
+    this.debugContainer.appendChild(qualitySelect);
+
+    // Toggle Debug UI Button
+    if (!this.debugToggleButton) {
+      this.debugToggleButton = document.createElement('button');
+      this.debugToggleButton.id = 'toggle-debug-ui';
+      this.debugToggleButton.textContent = 'Show Debug';
+      this.debugToggleButton.style.position = 'absolute';
+      this.debugToggleButton.style.top = '10px';
+      this.debugToggleButton.style.right = '10px';
+      this.debugToggleButton.style.zIndex = '1001';
+      this.debugToggleButton.addEventListener('click', () => {
+        const isVisible = this.debugContainer.style.display !== 'none';
+        this.debugContainer.style.display = isVisible ? 'none' : 'block';
+        this.debugToggleButton.textContent = isVisible ? 'Show Debug' : 'Hide Debug';
+      });
+      this.gameContainer.appendChild(this.debugToggleButton);
+    }
+  }
+
+  // Update FPS display in debug UI
+  updateFPSDisplay(fps) {
+    if (this.fpsDisplay) {
+      this.fpsDisplay.innerHTML = `FPS: ${fps.toFixed(1)}`;
+      
+      // Color-code based on performance
+      if (fps < 30) {
+        this.fpsDisplay.style.color = 'red';
+      } else if (fps < 50) {
+        this.fpsDisplay.style.color = 'yellow';
+      } else {
+        this.fpsDisplay.style.color = 'lime';
+      }
+    }
+  }
+  
+  // Update quality UI when changed
+  updateQualityUI(quality) {
+    const qualitySelect = document.querySelector('#quality-select');
+    if (qualitySelect) {
+      qualitySelect.value = quality;
+    }
+  }
 }

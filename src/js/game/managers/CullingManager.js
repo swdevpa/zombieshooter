@@ -35,6 +35,10 @@ export class CullingManager {
     this.occlusionCamera = null;
     this.occlusionRenderTarget = null;
     this.occlusionDepthMaterial = null;
+    this.occlusionCullingActive = false;
+    this.potentiallyVisibleObjects = new Set(); // Objekte nach Frustum-Culling, vor Occlusion Tests
+    this.occlusionTestResults = new Map(); // Speichert Ergebnisse des letzten Tests pro Objekt
+    this.occlusionQueryThrottle = 0; // Zähler für Throttling der aufwändigen Tests
 
     // Portal Culling
     this.portals = []; // Türen, Fenster, etc.
@@ -44,6 +48,7 @@ export class CullingManager {
 
     // Debug
     this.debugObjects = [];
+    this.debugOcclusionVisualizers = [];
   }
 
   init() {
@@ -82,19 +87,30 @@ export class CullingManager {
     this.occlusionCamera = this.game.camera.clone();
 
     // Rendertarget für Occlusion-Tests
-    const size = 256; // Niedrige Auflösung für Performance
+    const size = 512; // Höhere Auflösung für genauere Ergebnisse
     this.occlusionRenderTarget = new THREE.WebGLRenderTarget(size, size, {
-      format: THREE.RedFormat,
+      minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter,
+      format: THREE.RGBAFormat,
       type: THREE.UnsignedByteType,
+      depthBuffer: true, 
+      stencilBuffer: false
     });
 
     // Spezielles Material für Tiefeninformationen
-    this.occlusionDepthMaterial = new THREE.MeshDepthMaterial({
-      depthPacking: THREE.RGBADepthPacking,
+    this.occlusionDepthMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: false,
+      side: THREE.FrontSide
     });
+
+    // GPU Readback Puffer
+    this.occlusionPixelBuffer = new Uint8Array(4);
 
     // Identifiziere große Objekte als potentielle Verdeckungen
     this.identifyOccluders();
+    
+    this.occlusionCullingActive = true;
   }
 
   identifyOccluders() {
@@ -103,12 +119,23 @@ export class CullingManager {
 
     // Gebäude und große Strukturen als Occluder hinzufügen
     if (this.game.city && this.game.city.container) {
-      this.game.city.container.children.forEach((child) => {
-        if (child.isGroup && child.children.some((building) => building.isMesh)) {
-          this.occluders.push(child);
+      this.game.city.container.traverse((child) => {
+        // Nur Meshes mit signifikanter Größe als Occluder verwenden
+        if (child.isMesh && child.geometry) {
+          child.geometry.computeBoundingBox();
+          const size = new THREE.Vector3();
+          child.geometry.boundingBox.getSize(size);
+          
+          // Wenn das Objekt groß genug ist (z.B. ein Gebäude)
+          if (size.length() > 5) {
+            child.isOccluder = true;
+            this.occluders.push(child);
+          }
         }
       });
     }
+    
+    console.log(`Identified ${this.occluders.length} occluders in the scene`);
   }
 
   setupDebugVisualization() {
@@ -143,6 +170,24 @@ export class CullingManager {
       this.debugObjects.push(debugObject);
       this.game.scene.add(debugObject);
     });
+    
+    // Debug-Visualisierung für Occlusion
+    const occludedMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff00ff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.5,
+    });
+    
+    const visibleMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.5,
+    });
+    
+    this.occludedMaterial = occludedMaterial;
+    this.visibleMaterial = visibleMaterial;
   }
 
   update(camera) {
@@ -165,9 +210,17 @@ export class CullingManager {
   }
 
   performCulling(frustum, playerPosition) {
+    // Reset potentially visible objects
+    this.potentiallyVisibleObjects.clear();
+    
     // Perform frustum culling if enabled
     if (this.config.frustumCulling) {
       this.performFrustumCulling(frustum, playerPosition);
+    }
+
+    // Perform occlusion culling after frustum culling
+    if (this.config.occlusionCulling && this.occlusionCullingActive) {
+      this.performOcclusionCulling();
     }
 
     // City-specific culling for buildings
@@ -230,6 +283,9 @@ export class CullingManager {
 
       // Merken als potentiell sichtbar (für weitere Tests)
       this.visibleZombies.add(zombie);
+      this.potentiallyVisibleObjects.add(zombie.container);
+      
+      // Vorläufig sichtbar machen, kann von Occlusion Culling noch geändert werden
       zombie.container.visible = true;
     });
   }
@@ -239,7 +295,12 @@ export class CullingManager {
     if (this.game.player && this.game.player.weapon && this.game.player.weapon.bullets) {
       this.game.player.weapon.bullets.forEach((bullet) => {
         const boundingSphere = new THREE.Sphere(bullet.container.position, 0.5);
-        bullet.container.visible = frustum.intersectsSphere(boundingSphere);
+        const isVisible = frustum.intersectsSphere(boundingSphere);
+        bullet.container.visible = isVisible;
+        
+        if (isVisible) {
+          this.potentiallyVisibleObjects.add(bullet.container);
+        }
       });
     }
 
@@ -273,81 +334,217 @@ export class CullingManager {
 
       // Set visibility based on frustum test
       building.visible = isInFrustum;
+      
+      // Add to potentially visible objects if in frustum
+      if (isInFrustum) {
+        this.potentiallyVisibleObjects.add(building);
+      }
     });
   }
 
   performOcclusionCulling() {
-    if (!this.occlusionCamera || this.visibleZombies.size === 0) return;
+    if (!this.occlusionCamera || this.potentiallyVisibleObjects.size === 0) return;
+    
+    // Throttle occlusion culling updates for performance
+    this.occlusionQueryThrottle++;
+    if (this.occlusionQueryThrottle % 3 !== 0) return; // Nur jeden dritten Frame
+    this.occlusionQueryThrottle = 0;
 
     // Update Occlusion-Kamera
     this.occlusionCamera.copy(this.game.camera);
 
-    // Rendere Occluder in die Tiefentextur
+    // Nur Objekte im Occlusion-Test prüfen, die vom Frustum-Culling als sichtbar markiert wurden
+    const objectsToTest = Array.from(this.potentiallyVisibleObjects);
+    if (objectsToTest.length === 0) return;
+    
+    // Perform hierarchical Z-buffer occlusion culling
+    
+    // 1. Rendere Occluder in die Tiefentextur
+    this.renderOccluderDepthMap();
+    
+    // 2. Teste jedes potentiell sichtbare Objekt gegen die Tiefenkarte
+    this.testOcclusion(objectsToTest);
+    
+    // 3. Aktualisiere die Debug-Visualisierung für verdeckte Objekte
+    if (this.config.debugMode) {
+      this.updateOcclusionDebugVisualization();
+    }
+  }
+  
+  renderOccluderDepthMap() {
+    // Cache materials
     const originalMaterials = new Map();
-
-    // Setup Szene für Occlusion-Test
-    this.occluders.forEach((occluder) => {
-      occluder.traverse((obj) => {
-        if (obj.isMesh && obj.material) {
+    
+    // Nur Occluder rendern, Rest unsichtbar machen
+    const originalVisibility = new Map();
+    this.game.scene.traverse((obj) => {
+      if (obj.isMesh) {
+        originalVisibility.set(obj, obj.visible);
+        obj.visible = obj.isOccluder === true;
+        
+        if (obj.isOccluder) {
           originalMaterials.set(obj, obj.material);
           obj.material = this.occlusionDepthMaterial;
         }
-      });
+      }
     });
-
+    
     // Rendere Tiefentextur
     const originalRenderTarget = this.game.renderer.getRenderTarget();
+    const originalAutoClear = this.game.renderer.autoClear;
+    
     this.game.renderer.setRenderTarget(this.occlusionRenderTarget);
+    this.game.renderer.autoClear = true;
     this.game.renderer.clear();
     this.game.renderer.render(this.game.scene, this.occlusionCamera);
+    
+    // Stelle Originalzustand wieder her
     this.game.renderer.setRenderTarget(originalRenderTarget);
-
-    // Stelle Materialien wieder her
-    this.occluders.forEach((occluder) => {
-      occluder.traverse((obj) => {
+    this.game.renderer.autoClear = originalAutoClear;
+    
+    // Stelle Materialien und Sichtbarkeit wieder her
+    this.game.scene.traverse((obj) => {
+      if (obj.isMesh) {
+        if (originalVisibility.has(obj)) {
+          obj.visible = originalVisibility.get(obj);
+        }
+        
         if (originalMaterials.has(obj)) {
           obj.material = originalMaterials.get(obj);
         }
-      });
+      }
     });
-
-    // Teste sichtbare Zombies auf Verdeckung
-    this.testOcclusion();
   }
 
-  testOcclusion() {
-    // Hier würde man die Pixeldaten aus dem RenderTarget auslesen
-    // und für jedes Objekt prüfen, ob es verdeckt ist
-
-    // Vereinfachte Implementation: Raycast-basierte Occlusion
+  testOcclusion(objectsToTest) {
+    // Verwendung eines Raycasting-basierten Ansatzes für Occlusion Tests
+    // Dieses Verfahren ist effizienter als Pixelauslesen vom RenderTarget
     const raycaster = new THREE.Raycaster();
     const playerPosition = this.game.player.container.position.clone();
     playerPosition.y += 1.6; // Augenhöhe
-
-    // Prüfe jedes potentiell sichtbare Objekt
-    this.visibleZombies.forEach((zombie) => {
-      const zombiePosition = zombie.container.position.clone();
-      zombiePosition.y += 1.0; // Mittelpunkt des Zombies
-
-      // Richtungsvektor vom Spieler zum Zombie
-      const direction = zombiePosition.clone().sub(playerPosition).normalize();
-
-      // Setze Raycaster
-      raycaster.set(playerPosition, direction);
-
-      // Finde Schnittpunkte mit Occludern
-      const intersects = raycaster.intersectObjects(this.occluders, true);
-
-      // Wenn ein Occluder zwischen Spieler und Zombie ist, ist der Zombie verdeckt
-      if (intersects.length > 0) {
-        const distanceToZombie = playerPosition.distanceTo(zombiePosition);
+    
+    // Maximal 10 Objekte pro Frame für Occlusion testen (Performance)
+    const maxObjectsPerFrame = 10;
+    const objectsToTestThisFrame = objectsToTest.slice(0, maxObjectsPerFrame);
+    
+    // Teste jedes Objekt auf Verdeckung
+    for (const object of objectsToTestThisFrame) {
+      // Skip Occluder von den Tests
+      if (object.isOccluder) continue;
+      
+      // Bestimme Testpunkte für dieses Objekt
+      const testPoints = this.getObjectTestPoints(object);
+      
+      // Ein Objekt ist sichtbar, wenn mindestens ein Testpunkt sichtbar ist
+      let isVisible = false;
+      
+      for (const testPoint of testPoints) {
+        const direction = testPoint.clone().sub(playerPosition).normalize();
+        
+        // Setze Raycaster
+        raycaster.set(playerPosition, direction);
+        
+        // Finde Schnittpunkte mit potentiellen Occludern
+        const intersects = raycaster.intersectObjects(this.occluders, true);
+        
+        // Wenn keine Schnitte gefunden wurden, ist der Punkt sichtbar
+        if (intersects.length === 0) {
+          isVisible = true;
+          break;
+        }
+        
+        // Prüfe, ob der Schnitt näher ist als der Testpunkt
+        const distanceToTestPoint = playerPosition.distanceTo(testPoint);
         const distanceToOccluder = intersects[0].distance;
-
-        if (distanceToOccluder < distanceToZombie * 0.95) {
-          // 5% Toleranz
-          zombie.container.visible = false;
+        
+        // Berücksichtige eine kleine Toleranz für numerische Genauigkeit
+        if (distanceToOccluder >= distanceToTestPoint * 0.98) {
+          isVisible = true;
+          break;
         }
       }
+      
+      // Speichere Ergebnis
+      this.occlusionTestResults.set(object, isVisible);
+      
+      // Setze Sichtbarkeit
+      // Nur für Zombies und Effekte, nicht für Gebäude (die durch frustum culling gesteuert werden)
+      if (object !== this.game.player.container) {
+        object.visible = isVisible;
+        
+        // Für Zombies: Finde das Zombie-Objekt
+        if (object.userData && object.userData.zombieRef) {
+          const zombie = object.userData.zombieRef;
+          if (zombie) {
+            zombie.isOccluded = !isVisible;
+          }
+        }
+      }
+    }
+  }
+  
+  getObjectTestPoints(object) {
+    // Für jedes Objekt erstellen wir mehrere Testpunkte, um genauere Occlusion-Tests zu ermöglichen
+    const points = [];
+    
+    // Zentrum des Objekts (Weltkoordinaten)
+    const center = new THREE.Vector3();
+    object.getWorldPosition(center);
+    points.push(center);
+    
+    // Wenn das Objekt eine BoundingBox hat, nutze sie für weitere Testpunkte
+    if (object.geometry && object.geometry.boundingBox) {
+      const bbox = object.geometry.boundingBox.clone();
+      
+      // Transformiere BoundingBox in Weltkoordinaten
+      bbox.applyMatrix4(object.matrixWorld);
+      
+      // Eckpunkte der BoundingBox
+      points.push(new THREE.Vector3(bbox.min.x, bbox.min.y, bbox.min.z));
+      points.push(new THREE.Vector3(bbox.max.x, bbox.min.y, bbox.min.z));
+      points.push(new THREE.Vector3(bbox.min.x, bbox.max.y, bbox.min.z));
+      points.push(new THREE.Vector3(bbox.max.x, bbox.max.y, bbox.min.z));
+      points.push(new THREE.Vector3(bbox.min.x, bbox.min.y, bbox.max.z));
+      points.push(new THREE.Vector3(bbox.max.x, bbox.min.y, bbox.max.z));
+      points.push(new THREE.Vector3(bbox.min.x, bbox.max.y, bbox.max.z));
+      points.push(new THREE.Vector3(bbox.max.x, bbox.max.y, bbox.max.z));
+    } else {
+      // Alternativ einfach ein paar Punkte um das Zentrum herum
+      const radius = object.type === 'Zombie' ? 1.0 : 0.5;
+      points.push(new THREE.Vector3(center.x + radius, center.y, center.z));
+      points.push(new THREE.Vector3(center.x - radius, center.y, center.z));
+      points.push(new THREE.Vector3(center.x, center.y + radius, center.z));
+      points.push(new THREE.Vector3(center.x, center.y - radius, center.z));
+      points.push(new THREE.Vector3(center.x, center.y, center.z + radius));
+      points.push(new THREE.Vector3(center.x, center.y, center.z - radius));
+    }
+    
+    return points;
+  }
+  
+  updateOcclusionDebugVisualization() {
+    // Entferne bestehende Debug-Visualisierungen
+    this.debugOcclusionVisualizers.forEach(obj => this.game.scene.remove(obj));
+    this.debugOcclusionVisualizers = [];
+    
+    // Erstelle neue Debug-Visualisierungen für Occlusion-Tests
+    if (!this.occludedMaterial || !this.visibleMaterial) return;
+    
+    this.occlusionTestResults.forEach((isVisible, object) => {
+      const debugMaterial = isVisible ? this.visibleMaterial : this.occludedMaterial;
+      
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.3, 8, 8),
+        debugMaterial
+      );
+      
+      // Positioniere Debug-Kugel am Objekt
+      const position = new THREE.Vector3();
+      object.getWorldPosition(position);
+      sphere.position.copy(position);
+      
+      this.debugOcclusionVisualizers.push(sphere);
+      this.game.scene.add(sphere);
     });
   }
 
@@ -552,6 +749,11 @@ export class CullingManager {
       this.game.scene.remove(obj);
     });
     this.debugObjects = [];
+    
+    this.debugOcclusionVisualizers.forEach(obj => {
+      this.game.scene.remove(obj);
+    });
+    this.debugOcclusionVisualizers = [];
 
     if (this.frustumHelper) {
       this.game.scene.remove(this.frustumHelper);
@@ -562,5 +764,20 @@ export class CullingManager {
     if (enabled) {
       this.setupDebugVisualization();
     }
+  }
+  
+  // Schalte Occlusion Culling ein/aus
+  setOcclusionCullingEnabled(enabled) {
+    this.config.occlusionCulling = enabled;
+    this.occlusionCullingActive = enabled;
+    
+    if (!enabled) {
+      // Alle Objekte nach Frustum-Culling sichtbar machen
+      this.potentiallyVisibleObjects.forEach(obj => {
+        obj.visible = true;
+      });
+    }
+    
+    console.log(`Occlusion culling ${enabled ? 'enabled' : 'disabled'}`);
   }
 }

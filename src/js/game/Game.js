@@ -448,117 +448,128 @@ export class Game {
   }
 
   async init() {
-    console.log('Initializing game');
+    console.log("Game initialization started");
+    if (this.initialized) return Promise.resolve();
 
-    // Load assets first
     try {
+      // Load assets first
       await this.assetLoader.loadAssets();
       console.log('Assets loaded successfully');
-    } catch (error) {
-      console.error('Error loading assets:', error);
-    }
 
-    // Initialize scene manager
-    this.sceneManager = new SceneManager(this);
-    
-    // Initialize texturing system
-    this.texturingSystem = new TexturingSystem(this, this.assetLoader);
-    
-    // Create city manager
-    this.cityManager = new CityManager(this, this.assetLoader);
+      // Initialize scene manager
+      this.sceneManager = new SceneManager(this);
+      
+      // Initialize texturing system
+      this.texturingSystem = new TexturingSystem(this, this.assetLoader);
+      
+      // Create city manager
+      this.cityManager = new CityManager(this, this.assetLoader);
 
-    // Initialize sound manager
-    this.soundManager = new SoundManager(this, this.assetLoader);
-    this.soundManager.init();
-
-    // Create player
-    this.player = new Player(this, this.assetLoader);
-    this.player.init();
-    this.player.setPosition(10, 0, 10);
-    this.scene.add(this.player.container);
-
-    // Initialize weapon manager
-    this.weaponManager = new WeaponManager(this, this.player, this.assetLoader);
-    this.weaponManager.init();
-
-    // Create city
-    this.city = new City(this, {
-      citySize: {
-        width: 100,
-        height: 100
-      },
-      buildings: {
-        maxHeight: 20,
-        minHeight: 5
-      }
-    });
-    
-    const cityContainer = this.city.generate();
-    this.scene.add(cityContainer);
-
-    // Initialize atmospheric effects
-    this.atmosphericEffects = new AtmosphericEffects(this, this.assetLoader);
-    this.atmosphericEffects.init();
-    this.atmosphericEffects.setPreset('dusk');
-    
-    // Create navigation grid for the city
-    this.navigationGrid = new NavigationGrid(this);
-    this.navigationGrid.generate(this.city);
-    
-    // Debug options for pathfinding
-    this.debugPathfinding = false;
-
-    // Position player at city start location
-    const playerStartPos = this.city.getPlayerStartPosition();
-    this.player.setPosition(playerStartPos.x, playerStartPos.y, playerStartPos.z);
-
-    // Create zombie manager
-    this.zombieManager = new ZombieManager(this, this.assetLoader);
-    this.zombieManager.init();
-
-    // Mark interactable and collidable objects
-    this.markCollidableObjects();
-    
-    // Initialize UI
-    this.uiManager.init();
-
-    // Setup culling
-    this.setupFrustumCulling();
-
-    // Apply quality settings
-    this.applyQualitySettings();
-
-    console.log('Game initialized');
-    
-    // Trigger a resize to ensure everything is properly sized
-    this.onResize();
-
-    // Show main menu instead of just starting the game
-    if (this.gameStateManager) {
-      // Game will start from the menu, not automatically
-      this.running = false;
-    } else {
-      // Fall back to old behavior if state manager not available
-      this.start();
-    }
-    
-    // Add SoundManager initialization
-    if (this.soundManager) {
+      // Initialize sound manager
+      this.soundManager = new SoundManager(this, this.assetLoader);
       this.soundManager.init();
-      // Share the audio listener with the asset loader
-      if (this.soundManager.listener) {
-        this.assetLoader.setAudioListener(this.soundManager.listener);
+
+      // Create player
+      this.player = new Player(this, this.assetLoader);
+      this.player.init();
+      this.player.setPosition(10, 0, 10);
+      this.scene.add(this.player.container);
+
+      // Initialize weapon manager
+      this.weaponManager = new WeaponManager(this, this.player, this.assetLoader);
+      this.weaponManager.init();
+
+      // Create city
+      this.city = new City(this, {
+        citySize: {
+          width: 100,
+          height: 100
+        },
+        buildings: {
+          maxHeight: 20,
+          minHeight: 5
+        }
+      });
+      
+      const cityContainer = this.city.generate();
+      this.scene.add(cityContainer);
+
+      // Initialize atmospheric effects
+      this.atmosphericEffects = new AtmosphericEffects(this, this.assetLoader);
+      this.atmosphericEffects.init();
+      this.atmosphericEffects.setPreset('dusk');
+      
+      // Create navigation grid for the city
+      this.navigationGrid = new NavigationGrid(this);
+      this.navigationGrid.generate(this.city);
+      
+      // Debug options for pathfinding
+      this.debugPathfinding = false;
+
+      // Position player at city start location
+      const playerStartPos = this.city.getPlayerStartPosition();
+      this.player.setPosition(playerStartPos.x, playerStartPos.y, playerStartPos.z);
+
+      // Create zombie manager
+      this.zombieManager = new ZombieManager(this, this.assetLoader);
+      this.zombieManager.init();
+
+      // Mark interactable and collidable objects
+      this.markCollidableObjects();
+      
+      // Initialize UI
+      this.uiManager.init();
+
+      // Setup culling
+      this.setupFrustumCulling();
+
+      // Apply quality settings
+      this.applyQualitySettings();
+
+      console.log('Game initialized');
+      
+      // Trigger a resize to ensure everything is properly sized
+      this.onResize();
+
+      // Show main menu instead of just starting the game
+      if (this.gameStateManager) {
+        // Game will start from the menu, not automatically
+        this.running = false;
+      } else {
+        // Fall back to old behavior if state manager not available
+        this.start();
       }
-    }
+      
+      // Add SoundManager initialization
+      if (this.soundManager) {
+        this.soundManager.init();
+        // Share the audio listener with the asset loader
+        if (this.soundManager.listener) {
+          this.assetLoader.setAudioListener(this.soundManager.listener);
+        }
+      }
 
-    // Play background music and ambient sounds when game starts
-    if (this.soundManager) {
-      this.soundManager.playMusic('music_menu');
-      this.soundManager.playAmbient('ambient_city');
-    }
+      // Play background music and ambient sounds when game starts
+      if (this.soundManager) {
+        this.soundManager.playMusic('music_menu');
+        this.soundManager.playAmbient('ambient_city');
+      }
 
-    // Return for chaining
-    return this;
+      // Set up UI
+      this.ui = new UI(this, this.container);
+      await this.ui.init();
+      
+      // Set up debug UI
+      if (this.ui && this.ui.setupDebugUI) {
+        this.ui.setupDebugUI();
+      }
+
+      // Return for chaining
+      return this;
+    } catch (error) {
+      console.error("Error during game initialization:", error);
+      return Promise.reject(error);
+    }
   }
 
   // Mark objects in the city as collidable for collision detection
@@ -719,26 +730,31 @@ export class Game {
   }
 
   updateFPS(deltaTime) {
-    this.fpsCounter.frames++;
-
-    // Update FPS counter every second
-    if (performance.now() - this.fpsCounter.lastTime > 1000) {
-      this.fpsCounter.value = Math.round(
-        (this.fpsCounter.frames * 1000) / (performance.now() - this.fpsCounter.lastTime)
-      );
-      this.fpsCounter.frames = 0;
-      this.fpsCounter.lastTime = performance.now();
-
-      // Update UI
-      this.uiManager.updateFPS(this.fpsCounter.value);
+    // Update FPS only once per second
+    this.fpsUpdateTime += deltaTime;
+    
+    if (this.fpsUpdateTime > 1) {
+      this.fpsUpdateTime = 0;
+      this.currentFPS = Math.round(1 / (deltaTime || 0.016));
+      
+      // Update UI if available
+      if (this.ui && this.ui.updateFPSDisplay) {
+        this.ui.updateFPSDisplay(this.currentFPS);
+      }
     }
   }
 
   update(time) {
+    if (!this.running || this.paused) return;
+
+    // Calculate delta time (capped to prevent large jumps)
+    const rawDeltaTime = this.clock.getDelta();
+    const deltaTime = Math.min(0.1, rawDeltaTime); // Cap at 100ms to prevent huge jumps
+
+    // Update FPS counter
+    this.updateFPS(deltaTime);
+    
     try {
-      // Calculate delta time (with safety check for clock)
-      const delta = this.clock ? this.clock.getDelta() : 0.016; // Default to ~60 FPS
-      
       // Update frustum for culling distant zombies
       if (this.camera) {
         this.updateFrustum();
@@ -747,7 +763,7 @@ export class Game {
       // Update player if it exists
       if (this.player) {
         try {
-          this.player.update(delta);
+          this.player.update(deltaTime);
         } catch (playerError) {
           console.error('Error updating player:', playerError);
         }
@@ -758,7 +774,7 @@ export class Game {
         // Update city
         if (this.cityManager) {
           try {
-            this.cityManager.update(delta);
+            this.cityManager.update(deltaTime);
           } catch (cityError) {
             console.error('Error updating city:', cityError);
           }
@@ -767,7 +783,7 @@ export class Game {
         // Update zombies
         if (this.zombieManager) {
           try {
-            this.zombieManager.update(delta);
+            this.zombieManager.update(deltaTime);
           } catch (zombieError) {
             console.error('Error updating zombies:', zombieError);
           }
@@ -776,7 +792,7 @@ export class Game {
         // Update weapons
         if (this.weaponManager) {
           try {
-            this.weaponManager.update(delta);
+            this.weaponManager.update(deltaTime);
           } catch (weaponError) {
             console.error('Error updating weapons:', weaponError);
           }
@@ -785,7 +801,7 @@ export class Game {
         // Update UI
         if (this.uiManager) {
           try {
-            this.uiManager.update(delta);
+            this.uiManager.update(deltaTime);
           } catch (uiError) {
             console.error('Error updating UI:', uiError);
           }
@@ -794,7 +810,7 @@ export class Game {
         // Update sounds
         if (this.soundManager) {
           try {
-            this.soundManager.update(delta);
+            this.soundManager.update(deltaTime);
           } catch (soundError) {
             console.error('Error updating sounds:', soundError);
           }
@@ -951,94 +967,121 @@ export class Game {
   // Performance toggles
 
   togglePerformanceSettings() {
-    // Switch between quality levels
-    const levels = ['low', 'medium', 'high'];
-    const currentIndex = levels.indexOf(this.settings.qualityLevel);
-    const nextIndex = (currentIndex + 1) % levels.length;
-    this.settings.qualityLevel = levels[nextIndex];
-
-    // Apply quality settings
+    // Cycle through quality settings
+    const qualities = ['low', 'medium', 'high', 'ultra'];
+    let currentIndex = qualities.indexOf(this.settings.qualityLevel);
+    currentIndex = (currentIndex + 1) % qualities.length;
+    this.settings.qualityLevel = qualities[currentIndex];
+    
+    // Apply the new settings
     this.applyQualitySettings();
-
-    // Display quality change
-    console.log(`Quality set to: ${this.settings.qualityLevel}`);
+    
+    // Update UI if available
+    if (this.uiManager) {
+      this.uiManager.updateQualityUI(this.settings.qualityLevel);
+    }
+    
+    // Re-setup systems with new quality settings
+    this.setupSystems();
+    
+    return `Quality: ${this.settings.qualityLevel}`;
   }
 
   applyQualitySettings() {
-    console.log(`Applying quality settings: ${this.settings.qualityLevel}`);
-    
-    // Apply settings based on quality level
-    switch (this.settings.qualityLevel) {
+    const qualityLevel = this.settings.qualityLevel;
+
+    // Default to high quality
+    let shadowMapSize = 2048;
+    let shadowDist = 50;
+    let viewDistance = 100;
+    let maxZombies = 50;
+    let effectDetail = 1.0;
+    let textureQuality = 'high';
+    let enableOcclusionCulling = true;
+
+    switch (qualityLevel) {
       case 'low':
-        this.renderer.setPixelRatio(Math.min(1, window.devicePixelRatio));
-        this.renderer.shadowMap.enabled = false;
-        this.settings.shadows = false;
-        this.settings.postProcessing = false;
-        this.settings.cullingEnabled = true;
-        if (this.texturingSystem) {
-          this.texturingSystem.updateTextureQuality('low');
-        }
+        shadowMapSize = 512;
+        shadowDist = 20;
+        viewDistance = 40;
+        maxZombies = 15;
+        effectDetail = 0.3;
+        textureQuality = 'low';
+        enableOcclusionCulling = false; // Disabled on low-end hardware
         break;
-        
       case 'medium':
-        this.renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio));
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFShadowMap;
-        this.settings.shadows = true;
-        this.settings.postProcessing = true;
-        this.settings.cullingEnabled = true;
-        if (this.texturingSystem) {
-          this.texturingSystem.updateTextureQuality('medium');
-        }
+        shadowMapSize = 1024;
+        shadowDist = 35;
+        viewDistance = 70;
+        maxZombies = 30;
+        effectDetail = 0.7;
+        textureQuality = 'medium';
+        enableOcclusionCulling = true;
         break;
-        
       case 'high':
-        this.renderer.setPixelRatio(window.devicePixelRatio);
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        this.settings.shadows = true;
-        this.settings.postProcessing = true;
-        this.settings.cullingEnabled = true;
-        if (this.texturingSystem) {
-          this.texturingSystem.updateTextureQuality('high');
-        }
+        shadowMapSize = 2048;
+        shadowDist = 50;
+        viewDistance = 100;
+        maxZombies = 50;
+        effectDetail = 1.0;
+        textureQuality = 'high';
+        enableOcclusionCulling = true;
+        break;
+      case 'ultra':
+        shadowMapSize = 4096;
+        shadowDist = 100;
+        viewDistance = 150;
+        maxZombies = 100;
+        effectDetail = 1.5;
+        textureQuality = 'ultra';
+        enableOcclusionCulling = true;
         break;
     }
-    
-    // Apply post-processing if enabled
-    if (this.settings.postProcessing && this.composer) {
-      this.pixelFilter.setEnabled(true);
-    } else if (this.pixelFilter) {
-      this.pixelFilter.setEnabled(false);
+
+    // Apply shadow settings
+    if (this.settings.shadows) {
+      this.renderer.shadowMap.enabled = true;
+      this.directionalLight.castShadow = true;
+      this.directionalLight.shadow.mapSize.width = shadowMapSize;
+      this.directionalLight.shadow.mapSize.height = shadowMapSize;
+      this.directionalLight.shadow.camera.near = 0.5;
+      this.directionalLight.shadow.camera.far = shadowDist;
+      this.directionalLight.shadow.camera.left = -shadowDist;
+      this.directionalLight.shadow.camera.right = shadowDist;
+      this.directionalLight.shadow.camera.top = shadowDist;
+      this.directionalLight.shadow.camera.bottom = -shadowDist;
+    } else {
+      this.renderer.shadowMap.enabled = false;
+      this.directionalLight.castShadow = false;
     }
-    
+
     // Apply culling settings
     if (this.cullingManager) {
+      this.cullingManager.setViewDistance(viewDistance);
       this.cullingManager.setEnabled(this.settings.cullingEnabled);
-    }
-    
-    // Update materials
-    this.scene.traverse((object) => {
-      if (object.isMesh && object.material) {
-        if (Array.isArray(object.material)) {
-          object.material.forEach(material => {
-            material.needsUpdate = true;
-          });
-        } else {
-          object.material.needsUpdate = true;
-        }
-        
-        if (this.settings.shadows) {
-          object.castShadow = true;
-          object.receiveShadow = true;
-        } else {
-          object.castShadow = false;
-          object.receiveShadow = false;
-        }
+      
+      // Update occlusion culling based on quality settings
+      if (this.cullingManager.setOcclusionCullingEnabled) {
+        this.cullingManager.setOcclusionCullingEnabled(enableOcclusionCulling);
       }
-    });
-    
-    console.log('Quality settings applied');
+    }
+
+    // Apply zombie spawn limits
+    if (this.zombieManager) {
+      this.zombieManager.setMaxZombies(maxZombies);
+    }
+
+    // Apply texturing quality
+    if (this.texturingSystem) {
+      this.texturingSystem.setQuality(textureQuality);
+    }
+
+    // Apply effect detail level
+    if (this.atmosphericEffects) {
+      this.atmosphericEffects.setEffectDetail(effectDetail);
+    }
+
+    console.log(`Applied ${qualityLevel} quality settings`);
   }
 
   setFrameLimit(enabled, targetFPS = 60) {
@@ -1097,29 +1140,34 @@ export class Game {
 
   // Setup game systems
   setupSystems() {
-    // Use the assetLoader passed in the constructor instead of creating a new one
-    // this.assetLoader = new AssetLoader();
-    
-    // Setup managers that depend on assetLoader
-    this.sceneManager = new SceneManager(this, this.assetLoader);
-    this.cityManager = new CityManager(this, this.assetLoader);
-    this.zombieManager = new ZombieManager(this, this.assetLoader);
-    // WeaponManager is initialized in the init method after player creation
-    this.uiManager = new UiManager(this, this.assetLoader);
-    this.soundManager = new SoundManager(this, this.assetLoader);
+    // Setup culling
+    if (!this.frustum) {
+      this.setupFrustumCulling();
+    }
 
-    // Setup frustum culling (for zombie optimization)
-    this.setupFrustumCulling();
-    
-    // Initialize gameState object for tracking game progress
-    this.gameState = {
-      status: 'idle', // 'idle', 'playing', 'gameover', 'paused'
-      zombiesSpawned: 0,
-      zombiesKilled: 0,
-      wave: 1,
-      score: 0,
-      difficulty: 'normal' // 'easy', 'normal', 'hard'
-    };
+    // Setup or update object data for efficient rendering and culling
+    if (this.cullingManager) {
+      // Initialize occluders list (mainly buildings)
+      this.scene.traverse((object) => {
+        if (object.isMesh && object.userData && object.userData.type === 'building') {
+          object.isOccluder = true;
+        }
+      });
+
+      // Refresh culling manager
+      this.cullingManager.identifyOccluders();
+      
+      // Enable occlusion culling based on quality settings
+      const enableOcclusion = this.settings.qualityLevel !== 'low';
+      if (this.cullingManager.setOcclusionCullingEnabled) {
+        this.cullingManager.setOcclusionCullingEnabled(enableOcclusion);
+      }
+    }
+
+    // Setup user interface if needed
+    if (this.ui) {
+      this.ui.setupDebugUI();
+    }
   }
   
   // Setup frustum culling for performance optimization

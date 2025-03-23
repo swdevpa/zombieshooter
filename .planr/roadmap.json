@@ -219,8 +219,8 @@
         {
           "id": "occlusion-culling",
           "title": "Add occlusion culling for city environments",
-          "status": "todo",
-          "notes": ""
+          "status": "done",
+          "notes": "Implemented a comprehensive occlusion culling system that increases performance by only rendering objects visible to the player. Enhanced the CullingManager with ray-casting based occlusion detection for buildings hiding zombies and other objects. Added multi-point testing for accurate occlusion determination and optimized updates with throttling. Integrated with quality settings for hardware-appropriate performance and created a debug visualization system for testing."
         },
         {
           "id": "asset-optimization",
@@ -297,6 +297,7 @@
     "Regular testing on various hardware configurations"
   ],
   "notes": [
+    "Implemented a comprehensive occlusion culling system that increases performance by only rendering objects visible to the player. Enhanced the CullingManager with ray-casting based occlusion detection for buildings hiding zombies and other objects.",
     "Implemented a comprehensive sound system with a centralized SoundManager to handle all game audio. Added weapon sounds for shooting and reloading, zombie sounds with spatial positioning, UI feedback sounds, ambient environmental audio, and dynamic background music. Implemented audio pooling for performance optimization, volume controls for different sound categories, and 3D spatial audio for immersive experience.",
     "Implemented a comprehensive score system with points for different zombie types, headshots, and wave completion bonuses. Added a score multiplier system that increases with consecutive kills and resets when taking damage. Created animated score popups, wave announcements, high score tracking with localStorage persistence, and detailed statistics tracking.",
     "Implemented a comprehensive GameStateManager system with proper state transitions between menu, playing, paused, game over, and victory states. Created a main menu UI with difficulty selection, added pause menu functionality, and integrated with UI and input systems.",
@@ -305,7 +306,6 @@
     "Implemented a comprehensive wave-based zombie spawn system with progressive difficulty, visual feedback with wave announcements and spawn effects, and optimized wave transitions for better gameplay pacing.",
     "Implemented a comprehensive zombie AI pathfinding system with NavigationGrid for city mapping, type-specific behaviors for zombies, flanking for runners, obstacle breaking for brutes, advanced collision handling, debug visualization, and performance optimizations.",
     "Implemented a comprehensive zombie model system with three distinct types (standard, runner, brute), each with unique appearances, animations, and behaviors. Used ZombieFactory for type management and ZombieTextureAtlas for procedural texturing.",
-    "Implemented a comprehensive level boundary system with physical walls, collision detection, warning decorations, and debugging features to prevent players from leaving the game area.",
-    "Implemented a comprehensive ApocalypticAssets class for procedurally generating apocalyptic elements including barricades, gore, wreckage, military checkpoints, overgrown foliage, and fire effects."
+    "Implemented a comprehensive level boundary system with physical walls, collision detection, warning decorations, and debugging features to prevent players from leaving the game area."
   ]
 } 
