@@ -10,6 +10,9 @@ export class UI {
     this.healthContainer = document.getElementById('health-container');
     this.healthBar = document.getElementById('health-bar');
     this.healthText = document.getElementById('health-text');
+    
+    // Create health icon if needed
+    this.createHealthIcon();
 
     // Ammo UI elements
     this.ammoContainer = document.getElementById('ammo-container');
@@ -24,6 +27,12 @@ export class UI {
     
     // FPS counter element
     this.fpsElement = document.getElementById('fps-counter');
+    
+    // Hit marker elements
+    this.hitMarkerContainer = document.getElementById('hit-marker-container');
+    if (!this.hitMarkerContainer) {
+      this.createHitMarkerElements();
+    }
     
     // Settings menu elements
     this.settingsContainer = document.getElementById('settings-menu');
@@ -99,31 +108,67 @@ export class UI {
         this.healthBar.style.backgroundColor = '#ffcc00'; // Yellow
       } else {
         this.healthBar.style.backgroundColor = '#ff3333'; // Red
+        
+        // Add critical class for low health
+        if (this.healthContainer) {
+          this.healthContainer.classList.add('critical');
+        }
+      }
+      
+      // Remove critical class if health recovers
+      if (healthPercent > 30 && this.healthContainer) {
+        this.healthContainer.classList.remove('critical');
       }
     }
 
     // Update health text
     if (this.healthText) {
       this.healthText.textContent = Math.ceil(health);
+      
+      // Change text color based on health
+      if (healthPercent <= 30) {
+        this.healthText.style.color = '#ff3333'; // Red text for critical health
+      } else {
+        this.healthText.style.color = '#ffffff'; // White text for normal health
+      }
     }
 
-    // Pulse effect when taking damage
+    // Add damage effect when taking damage
     if (this.lastHealth && health < this.lastHealth) {
-      this.pulseHealthBar();
+      this.pulseDamageEffect();
+    }
+    
+    // Add healing effect when gaining health
+    if (this.lastHealth && health > this.lastHealth) {
+      this.pulseHealingEffect();
     }
 
     // Store last health for comparison
     this.lastHealth = health;
   }
 
-  pulseHealthBar() {
+  pulseDamageEffect() {
     if (this.healthContainer) {
-      // Add pulse class
+      // Add pulse and damage classes
       this.healthContainer.classList.add('pulse');
+      this.healthContainer.classList.add('damage');
       
-      // Remove pulse class after animation completes
+      // Remove classes after animation completes
       setTimeout(() => {
         this.healthContainer.classList.remove('pulse');
+        this.healthContainer.classList.remove('damage');
+      }, 300);
+    }
+  }
+  
+  pulseHealingEffect() {
+    if (this.healthBar) {
+      // Add healing class
+      this.healthBar.classList.add('healing');
+      
+      // Remove healing class after animation completes
+      setTimeout(() => {
+        this.healthBar.classList.remove('healing');
       }, 300);
     }
   }
@@ -965,5 +1010,306 @@ export class UI {
         this.ammoPickupIndicator.style.display = 'none';
       }, 500);
     }, 2000);
+  }
+
+  /**
+   * Create hit marker elements if they don't exist
+   */
+  createHitMarkerElements() {
+    // Create container for hit markers
+    this.hitMarkerContainer = document.createElement('div');
+    this.hitMarkerContainer.id = 'hit-marker-container';
+    this.hitMarkerContainer.style.position = 'absolute';
+    this.hitMarkerContainer.style.top = '50%';
+    this.hitMarkerContainer.style.left = '50%';
+    this.hitMarkerContainer.style.transform = 'translate(-50%, -50%)';
+    this.hitMarkerContainer.style.pointerEvents = 'none';
+    document.body.appendChild(this.hitMarkerContainer);
+    
+    // Create hit marker
+    this.hitMarker = document.createElement('div');
+    this.hitMarker.id = 'hit-marker';
+    this.hitMarker.style.width = '20px';
+    this.hitMarker.style.height = '20px';
+    this.hitMarker.style.position = 'relative';
+    this.hitMarker.style.opacity = '0';
+    this.hitMarker.style.transition = 'opacity 0.2s ease-out';
+    
+    // Create hit marker lines
+    const createLine = (rotation) => {
+      const line = document.createElement('div');
+      line.style.position = 'absolute';
+      line.style.width = '8px';
+      line.style.height = '2px';
+      line.style.backgroundColor = 'white';
+      line.style.top = '9px';
+      line.style.left = '6px';
+      line.style.transform = `rotate(${rotation}deg)`;
+      line.style.transformOrigin = 'center';
+      return line;
+    };
+    
+    this.hitMarker.appendChild(createLine(45));
+    this.hitMarker.appendChild(createLine(135));
+    this.hitMarker.appendChild(createLine(225));
+    this.hitMarker.appendChild(createLine(315));
+    
+    this.hitMarkerContainer.appendChild(this.hitMarker);
+    
+    // Create critical hit marker
+    this.criticalHitMarker = document.createElement('div');
+    this.criticalHitMarker.id = 'critical-hit-marker';
+    this.criticalHitMarker.style.width = '24px';
+    this.criticalHitMarker.style.height = '24px';
+    this.criticalHitMarker.style.position = 'relative';
+    this.criticalHitMarker.style.opacity = '0';
+    this.criticalHitMarker.style.transition = 'opacity 0.2s ease-out';
+    
+    // Create critical hit marker lines
+    const createCriticalLine = (rotation) => {
+      const line = document.createElement('div');
+      line.style.position = 'absolute';
+      line.style.width = '10px';
+      line.style.height = '2px';
+      line.style.backgroundColor = '#ff3333';
+      line.style.top = '11px';
+      line.style.left = '7px';
+      line.style.transform = `rotate(${rotation}deg)`;
+      line.style.transformOrigin = 'center';
+      return line;
+    };
+    
+    this.criticalHitMarker.appendChild(createCriticalLine(45));
+    this.criticalHitMarker.appendChild(createCriticalLine(135));
+    this.criticalHitMarker.appendChild(createCriticalLine(225));
+    this.criticalHitMarker.appendChild(createCriticalLine(315));
+    
+    this.hitMarkerContainer.appendChild(this.criticalHitMarker);
+    
+    // Create kill marker
+    this.killMarker = document.createElement('div');
+    this.killMarker.id = 'kill-marker';
+    this.killMarker.style.width = '30px';
+    this.killMarker.style.height = '30px';
+    this.killMarker.style.position = 'relative';
+    this.killMarker.style.opacity = '0';
+    this.killMarker.style.transition = 'opacity 0.2s ease-out';
+    
+    // Create kill marker circle
+    const createKillMarkerCircle = () => {
+      const circle = document.createElement('div');
+      circle.style.position = 'absolute';
+      circle.style.width = '30px';
+      circle.style.height = '30px';
+      circle.style.borderRadius = '50%';
+      circle.style.border = '2px solid #ff3333';
+      circle.style.top = '0';
+      circle.style.left = '0';
+      return circle;
+    };
+    
+    // Create kill marker X lines
+    const createKillMarkerLine = (rotation) => {
+      const line = document.createElement('div');
+      line.style.position = 'absolute';
+      line.style.width = '14px';
+      line.style.height = '2px';
+      line.style.backgroundColor = '#ff3333';
+      line.style.top = '14px';
+      line.style.left = '8px';
+      line.style.transform = `rotate(${rotation}deg)`;
+      line.style.transformOrigin = 'center';
+      return line;
+    };
+    
+    this.killMarker.appendChild(createKillMarkerCircle());
+    this.killMarker.appendChild(createKillMarkerLine(45));
+    this.killMarker.appendChild(createKillMarkerLine(135));
+    
+    this.hitMarkerContainer.appendChild(this.killMarker);
+  }
+
+  /**
+   * Show standard hit marker
+   */
+  showHitMarker() {
+    if (!this.hitMarker) return;
+    
+    // Show hit marker
+    this.hitMarker.style.opacity = '0.8';
+    
+    // Clear any existing timeout
+    if (this.hitMarkerTimeout) {
+      clearTimeout(this.hitMarkerTimeout);
+    }
+    
+    // Hide after a short delay
+    this.hitMarkerTimeout = setTimeout(() => {
+      this.hitMarker.style.opacity = '0';
+    }, 200);
+  }
+  
+  /**
+   * Show critical hit marker
+   */
+  showCriticalHitMarker() {
+    if (!this.criticalHitMarker) return;
+    
+    // Show critical hit marker
+    this.criticalHitMarker.style.opacity = '1';
+    
+    // Clear any existing timeout
+    if (this.criticalHitMarkerTimeout) {
+      clearTimeout(this.criticalHitMarkerTimeout);
+    }
+    
+    // Hide after a short delay
+    this.criticalHitMarkerTimeout = setTimeout(() => {
+      this.criticalHitMarker.style.opacity = '0';
+    }, 300);
+  }
+  
+  /**
+   * Show kill marker
+   */
+  showKillMarker() {
+    if (!this.killMarker) return;
+    
+    // Show kill marker
+    this.killMarker.style.opacity = '1';
+    
+    // Clear any existing timeout
+    if (this.killMarkerTimeout) {
+      clearTimeout(this.killMarkerTimeout);
+    }
+    
+    // Hide after a delay
+    this.killMarkerTimeout = setTimeout(() => {
+      this.killMarker.style.opacity = '0';
+    }, 400);
+    
+    // Animate kill marker
+    this.killMarker.animate(
+      [
+        { transform: 'scale(0.8)' },
+        { transform: 'scale(1.1)' },
+        { transform: 'scale(1.0)' }
+      ],
+      {
+        duration: 300,
+        easing: 'ease-out'
+      }
+    );
+  }
+
+  createHealthIcon() {
+    // Check if health icon already exists
+    if (!document.getElementById('health-icon')) {
+      // Create icon container
+      const iconContainer = document.createElement('div');
+      iconContainer.id = 'health-icon';
+      
+      // Create health icon
+      const heartIcon = document.createElement('div');
+      heartIcon.className = 'heart-icon';
+      
+      // Add to the health container
+      iconContainer.appendChild(heartIcon);
+      
+      // Insert at the beginning of the health container
+      if (this.healthContainer) {
+        this.healthContainer.insertBefore(iconContainer, this.healthContainer.firstChild);
+        
+        // Add styles to head if not already added
+        if (!document.getElementById('health-icon-styles')) {
+          const style = document.createElement('style');
+          style.id = 'health-icon-styles';
+          style.textContent = `
+            #health-icon {
+              position: absolute;
+              left: -30px;
+              top: 50%;
+              transform: translateY(-50%);
+              width: 20px;
+              height: 20px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              background-color: rgba(0, 0, 0, 0.5);
+              border: 2px solid #fff;
+              border-radius: 50%;
+              padding: 5px;
+            }
+            
+            .heart-icon {
+              width: 100%;
+              height: 100%;
+              background-color: #ff3333;
+              clip-path: path('M10,6 C10,6 8.5,0 5,0 C2,0 0,3 0,5 C0,8 3,11 10,16 C17,11 20,8 20,5 C20,3 18,0 15,0 C11.5,0 10,6 10,6 Z');
+              animation: pulse 1.5s ease infinite;
+            }
+            
+            @keyframes pulse {
+              0% { transform: scale(1); }
+              50% { transform: scale(1.1); }
+              100% { transform: scale(1); }
+            }
+            
+            #health-container {
+              position: relative;
+              overflow: visible;
+              margin-left: 40px;
+            }
+            
+            #health-container.critical .heart-icon {
+              animation: critical-pulse 0.8s ease infinite;
+            }
+            
+            @keyframes critical-pulse {
+              0% { transform: scale(1); opacity: 1; }
+              50% { transform: scale(1.2); opacity: 0.8; }
+              100% { transform: scale(1); opacity: 1; }
+            }
+            
+            #health-container.pulse .heart-icon {
+              animation: damage-pulse 0.3s ease;
+            }
+            
+            @keyframes damage-pulse {
+              0% { transform: scale(1); }
+              50% { transform: scale(1.5); }
+              100% { transform: scale(1); }
+            }
+            
+            #health-bar {
+              transition: width 0.3s ease-out, background-color 0.3s ease;
+            }
+            
+            #health-text {
+              font-size: 16px;
+              font-weight: bold;
+              transition: color 0.3s ease;
+            }
+            
+            #health-bar.healing {
+              filter: brightness(1.5);
+            }
+            
+            #health-container.damage {
+              animation: shake 0.3s ease;
+            }
+            
+            @keyframes shake {
+              0% { transform: translateX(0); }
+              25% { transform: translateX(-5px); }
+              50% { transform: translateX(5px); }
+              75% { transform: translateX(-5px); }
+              100% { transform: translateX(0); }
+            }
+          `;
+          document.head.appendChild(style);
+        }
+      }
+    }
   }
 }

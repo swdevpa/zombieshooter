@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Bullet } from './Bullet.js';
-import { ObjectPool } from '../utils/ObjectPool.js';
+import { ObjectPool } from 'utils/ObjectPool.js';
 
 /**
  * Base weapon class
@@ -251,94 +251,123 @@ export class Weapon {
   }
   
   /**
-   * Perform a raycast shot for immediate hit detection
+   * Perform raycast shooting
    * @returns {boolean} Whether the raycast hit something
    */
   performRaycastShot() {
+    // Check if game and camera exist
     if (!this.game || !this.game.camera) return false;
     
-    // Calculate the direction vector
-    const direction = new THREE.Vector3(0, 0, -1);
+    // Get camera direction
+    const cameraDirection = new THREE.Vector3(0, 0, -1);
+    cameraDirection.applyQuaternion(this.game.camera.quaternion);
     
-    // Add random spread
+    // Add spread to direction
     const spread = this.spread;
-    direction.x += (Math.random() - 0.5) * spread * 2;
-    direction.y += (Math.random() - 0.5) * spread * 2;
+    cameraDirection.x += (Math.random() - 0.5) * spread * 2;
+    cameraDirection.y += (Math.random() - 0.5) * spread * 2;
+    cameraDirection.z += (Math.random() - 0.5) * spread * 2;
+    cameraDirection.normalize();
     
-    direction.normalize();
+    // Set raycast origin to camera position
+    this.raycaster.set(this.game.camera.position.clone(), cameraDirection);
     
-    // Convert bullet direction to world coordinates
-    const worldDirection = direction.clone();
-    this.container.getWorldQuaternion(new THREE.Quaternion()).multiply(
-      new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0))
-    ).multiply(
-      new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), worldDirection)
-    );
+    // Get all objects in the scene
+    const objects = [];
+    this.game.scene.traverse((object) => {
+      if (object.isMesh && object !== this.mesh) {
+        objects.push(object);
+      }
+    });
     
-    // Get world position of weapon muzzle
-    const muzzlePosition = new THREE.Vector3();
-    if (this.barrel) {
-      this.barrel.getWorldPosition(muzzlePosition);
-    } else {
-      this.container.getWorldPosition(muzzlePosition);
-      muzzlePosition.z -= 0.5;
-    }
+    // Find intersections
+    const intersects = this.raycaster.intersectObjects(objects, true);
     
-    // Set up raycaster
-    this.raycaster.set(muzzlePosition, worldDirection);
-    
-    // First check for zombie hits
-    const zombieHits = [];
-    if (this.game.zombies) {
-      for (const zombie of this.game.zombies) {
-        if (zombie.isAlive && zombie.mesh) {
-          const hitboxes = [zombie.mesh]; // Use zombie mesh as hitbox
-          const intersects = this.raycaster.intersectObjects(hitboxes, true);
-          
-          if (intersects.length > 0) {
-            zombieHits.push({
-              zombie,
-              distance: intersects[0].distance,
-              point: intersects[0].point,
-              normal: intersects[0].face ? intersects[0].face.normal : new THREE.Vector3(0, 0, 1)
-            });
-          }
+    if (intersects.length > 0) {
+      // Get first intersection
+      const intersection = intersects[0];
+      const object = intersection.object;
+      
+      // Hit position and normal
+      const position = intersection.point.clone();
+      const normal = intersection.face ? intersection.face.normal.clone() : new THREE.Vector3(0, 1, 0);
+      
+      // Transform normal from object to world space
+      normal.transformDirection(object.matrixWorld);
+      
+      // Find zombie parent of hit object
+      let zombieObject = null;
+      let currentObject = object;
+      
+      // Traverse up parent hierarchy to find a zombie
+      while (currentObject) {
+        if (currentObject.userData && currentObject.userData.zombieRef) {
+          zombieObject = currentObject.userData.zombieRef;
+          break;
         }
+        
+        // Try parent
+        currentObject = currentObject.parent;
       }
-    }
-    
-    // Check for environment hits
-    const environmentHits = [];
-    if (this.game.environmentObjects) {
-      const intersects = this.raycaster.intersectObjects(this.game.environmentObjects, true);
       
-      for (const hit of intersects) {
-        environmentHits.push({
-          object: hit.object,
-          distance: hit.distance,
-          point: hit.point,
-          normal: hit.face ? hit.face.normal : new THREE.Vector3(0, 0, 1)
-        });
-      }
-    }
-    
-    // Sort all hits by distance
-    const allHits = [...zombieHits, ...environmentHits].sort((a, b) => a.distance - b.distance);
-    
-    // Process the closest hit
-    if (allHits.length > 0) {
-      const closestHit = allHits[0];
-      
-      if (closestHit.zombie) {
-        // Hit a zombie
-        closestHit.zombie.takeDamage(this.damage);
-        this.createHitEffect(closestHit.point, closestHit.normal, true);
+      if (zombieObject) {
+        // We hit a zombie!
+        
+        // Determine hit zone based on the object that was hit
+        let hitZone = 'torso'; // Default hit zone
+        
+        // Check object name for hit zone hints
+        const objectName = object.name.toLowerCase();
+        if (objectName.includes('head')) {
+          hitZone = 'head';
+        } else if (objectName.includes('arm') || objectName.includes('leg') || 
+                  objectName.includes('hand') || objectName.includes('foot')) {
+          hitZone = 'limb';
+        }
+        
+        // Use DamageManager if available
+        if (this.game.damageManager) {
+          // Process the hit through the damage manager
+          this.game.damageManager.processWeaponDamage(
+            this, // weapon
+            zombieObject, // target
+            {
+              hitZone: hitZone,
+              hitPosition: position,
+              hitNormal: normal
+            }
+          );
+        } else if (this.game.zombieManager) {
+          // Fallback to ZombieManager if available
+          this.game.zombieManager.processZombieDamage(
+            zombieObject,
+            this,
+            {
+              hitZone: hitZone,
+              hitPosition: position,
+              isCritical: hitZone === 'head' ? Math.random() < 0.5 : Math.random() < 0.05
+            }
+          );
+        } else {
+          // Direct damage application fallback
+          const isCritical = hitZone === 'head' ? Math.random() < 0.5 : Math.random() < 0.05;
+          
+          zombieObject.takeDamage(this.damage, {
+            hitZone,
+            isCritical,
+            damageSource: 'player'
+          });
+          
+          // Create hit effect
+          this.createHitEffect(position, normal, true);
+        }
+        
+        return true;
       } else {
-        // Hit environment
-        this.createHitEffect(closestHit.point, closestHit.normal, false);
+        // We hit an environment object, create hit effect
+        this.createHitEffect(position, normal, false);
+        return true;
       }
-      
-      return true;
     }
     
     return false;

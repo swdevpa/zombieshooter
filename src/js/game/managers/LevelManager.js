@@ -60,6 +60,13 @@ export class LevelManager {
     };
   }
 
+  init() {
+    console.log('LevelManager initialized');
+    // Default to level 1 when game starts
+    this.currentLevel = 1;
+    // Additional initialization can be added here if needed
+  }
+
   async loadLevel(levelNumber) {
     if (!this.levelData[levelNumber]) {
       console.error(`Level ${levelNumber} does not exist!`);

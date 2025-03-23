@@ -21,6 +21,7 @@ import { CityManager } from './managers/CityManager.js';
 import { WeaponManager } from './managers/WeaponManager.js';
 import { SoundManager } from './managers/SoundManager.js';
 import { NavigationGrid } from './world/NavigationGrid.js';
+import { DamageManager } from './managers/DamageManager.js';
 
 export class Game {
   constructor(container, assetLoader) {
@@ -189,6 +190,9 @@ export class Game {
     // Initialize entity manager
     this.entityManager = new EntityManager(this);
     this.entityManager.init();
+    
+    // Initialize damage manager
+    this.damageManager = new DamageManager(this, this.assetLoader);
   }
 
   setupEvents() {
@@ -436,6 +440,10 @@ export class Game {
     // Create city manager
     this.cityManager = new CityManager(this, this.assetLoader);
 
+    // Initialize sound manager
+    this.soundManager = new SoundManager(this, this.assetLoader);
+    this.soundManager.init();
+
     // Create player
     this.player = new Player(this, this.assetLoader);
     this.player.init();
@@ -665,14 +673,24 @@ export class Game {
       this.player.update(deltaTime);
     }
 
-    // Update zombie manager
+    // Update zombies
     if (this.zombieManager) {
       this.zombieManager.update(deltaTime);
     }
 
-    // Update entity manager
-    if (this.entityManager) {
-      this.entityManager.update(deltaTime);
+    // Update UI
+    if (this.uiManager) {
+      this.uiManager.update(deltaTime);
+    }
+    
+    // Update damage manager
+    if (this.damageManager) {
+      this.damageManager.update(deltaTime);
+    }
+
+    // Update navigation grid for pathfinding
+    if (this.navigationGrid && this.navigationGrid.needsUpdate) {
+      this.navigationGrid.update();
     }
 
     // Update atmospheric effects

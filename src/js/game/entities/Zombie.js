@@ -827,33 +827,320 @@ export class Zombie {
     }
   }
 
-  takeDamage(amount) {
-    if (!this.isAlive) return;
+  /**
+   * Take damage from player or other sources
+   * @param {number} amount - Amount of damage to take
+   * @param {Object} options - Additional options for damage
+   * @param {string} options.hitZone - The zone that was hit (head, torso, limb)
+   * @param {boolean} options.isCritical - Whether this was a critical hit
+   * @param {string} options.damageSource - Source of the damage (player, explosion, etc.)
+   * @returns {boolean} Whether the zombie is still alive
+   */
+  takeDamage(amount, options = {}) {
+    // Default options
+    const { 
+      hitZone = 'torso', 
+      isCritical = false, 
+      damageSource = 'player' 
+    } = options;
+    
+    if (!this.isAlive) return false;
+    
+    // Apply damage with hit zone modifiers
+    let actualDamage = amount;
+    
+    // Apply hit zone modifiers
+    if (hitZone === 'head') {
+      actualDamage *= 2.5; // Headshots do extra damage
+      
+      // If this is a headshot with enough damage, instant kill
+      if (actualDamage > this.health * 0.7) {
+        actualDamage = this.health; // Ensure death
+      }
+    } else if (hitZone === 'limb') {
+      actualDamage *= 0.7; // Limb shots do less damage
+    }
+    
+    // Apply zombie type-specific modifiers
+    if (this.options.type === 'brute') {
+      actualDamage *= 0.7; // Brutes are more resistant
+    } else if (this.options.type === 'runner') {
+      actualDamage *= 0.8; // Runners are slightly resistant
+    } else if (this.options.type === 'exploder') {
+      actualDamage *= 1.2; // Exploders are more vulnerable
+    } else if (this.options.type === 'spitter') {
+      actualDamage *= 1.1; // Spitters are slightly vulnerable
+    }
+    
+    // Apply critical hit modifier
+    if (isCritical) {
+      actualDamage *= 1.5;
+    }
+    
+    // Round to whole number
+    actualDamage = Math.round(actualDamage);
     
     // Reduce health
-    this.health -= amount;
+    this.health = Math.max(0, this.health - actualDamage);
     
-    // Play damage animation/feedback
-    this.playDamageAnimation();
+    // Update and show health bar
+    if (this.model) {
+      this.model.showDamage();
+      this.model.updateHealthBar(this.health, this.maxHealth);
+    }
     
-    // Check if zombie is dead
-    if (this.health <= 0) {
-      this.health = 0;
+    // Play damage animation
+    this.playDamageAnimation(hitZone, isCritical);
+    
+    // Check if dead
+    if (this.health <= 0 && this.isAlive) {
       this.die();
       
-      // Update game state
-      if (this.game.gameState) {
-        this.game.gameState.zombiesKilled++;
-        this.game.gameState.score += this.points;
+      // Record kill in ZombieManager
+      if (this.game && this.game.zombieManager) {
+        this.game.zombieManager.recordZombieKill(this);
       }
+      
+      return false;
     }
+    
+    // Alert nearby zombies based on damage amount and source
+    if (this.game && this.game.zombieManager) {
+      const alertRadius = this.options.type === 'screamer' ? 20 : 8;
+      this.game.zombieManager.alertZombiesInRadius(this.position.clone(), alertRadius, this);
+    }
+    
+    return true;
   }
 
-  playDamageAnimation() {
-    if (this.model) {
-      // Play hit animation
-      this.model.showDamageEffect();
+  /**
+   * Play appropriate damage animation based on hit zone
+   * @param {string} hitZone - The zone that was hit
+   * @param {boolean} isCritical - Whether this was a critical hit
+   */
+  playDamageAnimation(hitZone = 'torso', isCritical = false) {
+    if (!this.model || !this.isAlive) return;
+    
+    // Don't interrupt death animation
+    if (this.model.animation && this.model.animation.state === 'dying') return;
+    
+    // Play different animations based on hit zone
+    if (hitZone === 'head') {
+      // Head shot reaction
+      this.model.setAnimationState('headshot');
+      
+      // Special reaction for critical headshots
+      if (isCritical) {
+        this.createHeadshotEffect(this.position.clone().add(new THREE.Vector3(0, 1.7, 0)));
+      }
+    } else if (hitZone === 'limb') {
+      // Limb shot reaction
+      this.model.setAnimationState('limb_hit');
+    } else {
+      // Default torso reaction
+      this.model.setAnimationState('hit');
     }
+    
+    // Create blood spray effect at hit position
+    const hitPosition = this.position.clone();
+    hitPosition.y += (hitZone === 'head') ? 1.7 : 
+                     (hitZone === 'limb') ? 0.8 : 1.2;
+    
+    // Offset position slightly based on look direction
+    const lookDir = new THREE.Vector3(0, 0, 1).applyQuaternion(this.container.quaternion);
+    hitPosition.add(lookDir.multiplyScalar(-0.1)); // Slightly behind zombie
+    
+    this.createBloodSprayEffect(hitPosition, hitZone, isCritical);
+    
+    // Flash zombie red briefly using ZombieModel's damage flash
+    if (this.model.setDamageFlash) {
+      this.model.setDamageFlash(true);
+      
+      // Clear any existing flash timeout
+      if (this.damageFlashTimeout) {
+        clearTimeout(this.damageFlashTimeout);
+      }
+      
+      // Reset damage flash after a short time
+      this.damageFlashTimeout = setTimeout(() => {
+        if (this.model && this.model.setDamageFlash) {
+          this.model.setDamageFlash(false);
+        }
+      }, 200);
+    }
+  }
+  
+  /**
+   * Create blood spray effect at hit position
+   * @param {Vector3} position - Position for blood effect
+   * @param {string} hitZone - The zone that was hit
+   * @param {boolean} isCritical - Whether this was a critical hit
+   */
+  createBloodSprayEffect(position, hitZone = 'torso', isCritical = false) {
+    // Create particle system for blood spray
+    const particleCount = isCritical ? 50 : 20;
+    const particleGeometry = new THREE.BufferGeometry();
+    const particlePositions = new Float32Array(particleCount * 3);
+    
+    // Initial position (all at impact point)
+    for (let i = 0; i < particleCount; i++) {
+      particlePositions[i * 3] = position.x;
+      particlePositions[i * 3 + 1] = position.y;
+      particlePositions[i * 3 + 2] = position.z;
+    }
+    
+    particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+    
+    // Create particle material
+    const particleMaterial = new THREE.PointsMaterial({
+      color: 0xaa0000,
+      size: 0.05,
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    
+    // Create particle system
+    const particles = new THREE.Points(particleGeometry, particleMaterial);
+    
+    // Add to scene
+    if (this.game && this.game.scene) {
+      this.game.scene.add(particles);
+    }
+    
+    // Calculate spray direction (away from player)
+    const playerPosition = this.game?.player?.container?.position || new THREE.Vector3(0, 0, 0);
+    const direction = new THREE.Vector3().subVectors(position, playerPosition).normalize();
+    
+    // Setup velocity and lifetime for particles
+    const velocities = [];
+    const lifetimes = [];
+    
+    for (let i = 0; i < particleCount; i++) {
+      // Spread factor depends on hit zone and critical
+      const spreadFactor = hitZone === 'head' ? 0.3 : 0.15;
+      const velocityMultiplier = hitZone === 'head' ? 1.5 : 1.0;
+      
+      // Base direction plus random spread
+      const particleDir = direction.clone();
+      particleDir.x += (Math.random() - 0.5) * spreadFactor;
+      particleDir.y += (Math.random() - 0.5) * spreadFactor;
+      particleDir.z += (Math.random() - 0.5) * spreadFactor;
+      particleDir.normalize();
+      
+      // Speed depends on critical and random factor
+      const speed = (0.5 + Math.random() * 0.5) * velocityMultiplier * (isCritical ? 1.5 : 1.0);
+      const velocity = particleDir.multiplyScalar(speed);
+      
+      velocities.push(velocity);
+      
+      // Random lifetime between 0.3 and 0.8 seconds
+      lifetimes.push(300 + Math.random() * 500);
+    }
+    
+    // Start time
+    const startTime = Date.now();
+    
+    // Update function for particles
+    const updateParticles = () => {
+      const now = Date.now();
+      const elapsedTime = now - startTime;
+      let particlesAlive = false;
+      
+      // Update positions based on velocity and time
+      for (let i = 0; i < particleCount; i++) {
+        if (elapsedTime < lifetimes[i]) {
+          const deltaSeconds = Math.min(elapsedTime / 1000, 0.1);
+          
+          // Update position
+          particlePositions[i * 3] += velocities[i].x * deltaSeconds;
+          particlePositions[i * 3 + 1] += velocities[i].y * deltaSeconds - 1.0 * deltaSeconds * deltaSeconds; // Gravity
+          particlePositions[i * 3 + 2] += velocities[i].z * deltaSeconds;
+          
+          particlesAlive = true;
+        } else {
+          // Particle is dead, move far away
+          particlePositions[i * 3] = 1000;
+          particlePositions[i * 3 + 1] = 1000;
+          particlePositions[i * 3 + 2] = 1000;
+        }
+      }
+      
+      // Update the buffer attribute
+      particles.geometry.attributes.position.needsUpdate = true;
+      
+      // Update material opacity for fade-out
+      particles.material.opacity = Math.max(0, 0.8 * (1 - elapsedTime / 1000));
+      
+      if (particlesAlive && elapsedTime < 1000) {
+        // Continue updating
+        requestAnimationFrame(updateParticles);
+      } else {
+        // Cleanup particles
+        if (particles.parent) {
+          particles.parent.remove(particles);
+        }
+        particleGeometry.dispose();
+        particleMaterial.dispose();
+      }
+    };
+    
+    // Start update loop
+    requestAnimationFrame(updateParticles);
+  }
+  
+  /**
+   * Create headshot effect
+   * @param {Vector3} position - Position for headshot effect
+   */
+  createHeadshotEffect(position) {
+    // Create a special effect for critical headshots
+    const geometry = new THREE.SphereGeometry(0.2, 8, 8);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xff3333,
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false
+    });
+    
+    const headshot = new THREE.Mesh(geometry, material);
+    headshot.position.copy(position);
+    
+    // Add to scene
+    if (this.game && this.game.scene) {
+      this.game.scene.add(headshot);
+    }
+    
+    // Start time
+    const startTime = Date.now();
+    
+    // Update function for headshot effect
+    const updateHeadshot = () => {
+      const now = Date.now();
+      const elapsedTime = now - startTime;
+      
+      if (elapsedTime < 300) {
+        // Scale up and fade out
+        const scale = 1 + elapsedTime / 100;
+        headshot.scale.set(scale, scale, scale);
+        
+        headshot.material.opacity = Math.max(0, 0.8 * (1 - elapsedTime / 300));
+        
+        // Continue updating
+        requestAnimationFrame(updateHeadshot);
+      } else {
+        // Cleanup effect
+        if (headshot.parent) {
+          headshot.parent.remove(headshot);
+        }
+        geometry.dispose();
+        material.dispose();
+      }
+    };
+    
+    // Start update loop
+    requestAnimationFrame(updateHeadshot);
   }
 
   /**

@@ -6,10 +6,12 @@ export class ObjectPool {
   /**
    * Create a new object pool
    * @param {Function} createFn - Factory function to create new objects
+   * @param {Function} resetFn - Function to reset objects when returned to pool
    * @param {number} initialSize - Initial pool size
    */
-  constructor(createFn, initialSize = 10) {
+  constructor(createFn, resetFn, initialSize = 10) {
     this.createFn = createFn;
+    this.resetFn = resetFn;
     this.pool = [];
     this.activeObjects = new Set();
     
@@ -31,10 +33,9 @@ export class ObjectPool {
 
   /**
    * Get an object from the pool
-   * @param {Function} setupFn - Function to set up the object
    * @returns {Object} The activated object
    */
-  get(setupFn = null) {
+  get() {
     // Find an inactive object in the pool
     let obj = this.pool.find(obj => !obj.isActive);
     
@@ -48,11 +49,6 @@ export class ObjectPool {
     obj.isActive = true;
     this.activeObjects.add(obj);
     
-    // Set up the object if a setup function was provided
-    if (setupFn) {
-      setupFn(obj);
-    }
-    
     return obj;
   }
 
@@ -65,9 +61,9 @@ export class ObjectPool {
       obj.isActive = false;
       this.activeObjects.delete(obj);
       
-      // If the object has a reset method, call it
-      if (typeof obj.reset === 'function') {
-        obj.reset();
+      // Reset the object using provided reset function
+      if (this.resetFn) {
+        this.resetFn(obj);
       }
     }
   }
@@ -79,9 +75,9 @@ export class ObjectPool {
     this.activeObjects.forEach(obj => {
       obj.isActive = false;
       
-      // If the object has a reset method, call it
-      if (typeof obj.reset === 'function') {
-        obj.reset();
+      // Reset the object using provided reset function
+      if (this.resetFn) {
+        this.resetFn(obj);
       }
     });
     
@@ -111,4 +107,4 @@ export class ObjectPool {
   getTotalCount() {
     return this.pool.length;
   }
-}
+} 

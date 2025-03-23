@@ -268,4 +268,23 @@ export class UiManager {
       this.ui.showAmmoPickupIndicator(amount);
     }
   }
+
+  // Hit indicator methods
+  showHitMarker() {
+    if (this.ui) {
+      this.ui.showHitMarker();
+    }
+  }
+  
+  showCriticalHitMarker() {
+    if (this.ui) {
+      this.ui.showCriticalHitMarker();
+    }
+  }
+  
+  showKillMarker() {
+    if (this.ui) {
+      this.ui.showKillMarker();
+    }
+  }
 }

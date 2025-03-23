@@ -1132,135 +1132,94 @@ export class ZombieManager {
   }
 
   /**
-   * Alert zombies in a radius to a player's position
-   * Used by screamer zombies
-   * @param {THREE.Vector3} position - Center position of the scream
-   * @param {number} radius - Radius of effect
-   * @param {Object} source - The zombie that screamed
+   * Process weapon damage on a specific zombie
+   * @param {Zombie} zombie - The zombie to damage
+   * @param {Object} weapon - The weapon dealing damage
+   * @param {Object} hitInfo - Information about the hit
+   * @param {string} hitInfo.hitZone - Zone that was hit (head, torso, limb)
+   * @param {THREE.Vector3} hitInfo.hitPosition - Position where the hit occurred
+   * @param {boolean} hitInfo.isCritical - Whether this was a critical hit 
+   * @returns {Object} Damage information
    */
-  alertZombiesInRadius(position, radius, source) {
-    // Check if we have zombies to alert
-    if (!this.zombies || this.zombies.length === 0) return;
+  processZombieDamage(zombie, weapon, hitInfo) {
+    if (!zombie || !zombie.isAlive) return { success: false };
     
-    // Create an alert visual effect
-    this.createAlertEffect(position, radius);
+    // Get base damage from weapon
+    const baseDamage = weapon.damage || 10;
     
-    // For each zombie in range, make them aware of player
-    let alertedCount = 0;
+    // Extract hit information
+    const { hitZone = 'torso', hitPosition, isCritical = false } = hitInfo;
     
-    for (const zombie of this.zombies) {
-      // Skip the source zombie and dead zombies
-      if (zombie === source || !zombie.isAlive) continue;
-      
-      // Calculate distance to scream
-      const distance = zombie.container.position.distanceTo(position);
-      
-      // If in range, alert zombie
-      if (distance <= radius) {
-        // Force a path recalculation to the player
-        zombie.forcePathRecalculation();
-        
-        // Increase speed temporarily for a "rush" effect
-        const originalSpeed = zombie.speed;
-        zombie.speed *= 1.5;
-        
-        // Reset speed after a delay
-        setTimeout(() => {
-          if (zombie && zombie.isAlive) {
-            zombie.speed = originalSpeed;
-          }
-        }, 5000);
-        
-        alertedCount++;
-      }
-    }
+    // Apply damage to zombie
+    const success = zombie.takeDamage(baseDamage, {
+      hitZone,
+      isCritical,
+      damageSource: 'player'
+    });
     
-    console.log(`Alerted ${alertedCount} zombies with scream from a ${source.options.type} zombie`);
+    // Return result
+    return {
+      success,
+      zombie,
+      damage: baseDamage,
+      hitZone,
+      isCritical,
+      killConfirmed: !zombie.isAlive
+    };
   }
   
   /**
-   * Create alert effect for screamer ability
-   * @param {THREE.Vector3} position - Center of effect
-   * @param {number} radius - Radius of effect
+   * Damage all zombies in radius
+   * @param {THREE.Vector3} position - Center position
+   * @param {number} radius - Damage radius
+   * @param {number} damage - Base damage
+   * @param {Object} source - Source entity to exclude from damage
    */
-  createAlertEffect(position, radius) {
-    // Create a visual indicator for debugging and player feedback
-    const geometry = new THREE.CircleGeometry(radius, 32);
-    const material = new THREE.MeshBasicMaterial({
-      color: 0xffff00,
-      transparent: true,
-      opacity: 0.2,
-      side: THREE.DoubleSide
-    });
-    
-    const alertCircle = new THREE.Mesh(geometry, material);
-    alertCircle.rotation.x = -Math.PI / 2; // Flat on ground
-    alertCircle.position.copy(position);
-    alertCircle.position.y = 0.1; // Just above ground
-    
-    // Add to scene
-    this.game.scene.add(alertCircle);
-    
-    // Track animation and remove after delay
-    this.game.effects = this.game.effects || [];
-    this.game.effects.push({
-      mesh: alertCircle,
-      type: 'alert',
-      startTime: performance.now() / 1000,
-      duration: 1.5,
-      update: (deltaTime, time) => {
-        const age = time - this.startTime;
-        const progress = age / this.duration;
-        
-        // Fade out
-        alertCircle.material.opacity = 0.2 * (1 - progress);
-        
-        // Pulse
-        const scale = 1 + 0.2 * Math.sin(progress * Math.PI * 4);
-        alertCircle.scale.set(scale, scale, scale);
-        
-        // Remove when done
-        if (progress >= 1.0) {
-          this.game.scene.remove(alertCircle);
-          return true;
-        }
-        
-        return false;
-      }
-    });
-  }
-  
-  /**
-   * Damage zombies in a radius
-   * Used by exploder zombies
-   * @param {THREE.Vector3} position - Center of explosion
-   * @param {number} radius - Explosion radius
-   * @param {number} damage - Base damage amount
-   * @param {Object} source - Source zombie to exclude from damage
-   */
-  damageZombiesInRadius(position, radius, damage, source) {
-    // Check if we have zombies to damage
-    if (!this.zombies || this.zombies.length === 0) return;
-    
-    let damagedCount = 0;
-    
+  damageZombiesInRadius(position, radius, damage, source = null) {
     for (const zombie of this.zombies) {
-      // Skip the source zombie and dead zombies
-      if (zombie === source || !zombie.isAlive) continue;
+      // Skip if not alive or is the source
+      if (!zombie.isAlive || zombie === source) continue;
       
       // Calculate distance to explosion
       const distance = zombie.container.position.distanceTo(position);
       
-      // If in range, apply damage with falloff based on distance
+      // Apply damage if in radius
       if (distance <= radius) {
-        const falloff = 1 - (distance / radius);
-        const actualDamage = damage * falloff;
+        // Calculate damage based on distance (more damage closer to center)
+        const damageMultiplier = 1 - (distance / radius);
+        const finalDamage = Math.round(damage * damageMultiplier);
         
-        zombie.takeDamage(actualDamage);
-        damagedCount++;
+        // Apply damage
+        zombie.takeDamage(finalDamage, {
+          hitZone: 'torso', // Default to torso for explosions
+          isCritical: false,
+          damageSource: 'explosion'
+        });
       }
     }
-    
-    console.log(`Damaged ${damagedCount} zombies from an explosion`);
+  }
+  
+  /**
+   * Alert zombies in radius
+   * @param {THREE.Vector3} position - Center position
+   * @param {number} radius - Alert radius
+   * @param {Object} source - Source entity
+   */
+  alertZombiesInRadius(position, radius, source = null) {
+    for (const zombie of this.zombies) {
+      // Skip if not alive or is the source
+      if (!zombie.isAlive || zombie === source) continue;
+      
+      // Calculate distance
+      const distance = zombie.container.position.distanceTo(position);
+      
+      // Alert if in radius
+      if (distance <= radius) {
+        // Force path recalculation in zombie to make it more alert
+        if (zombie.findPathToPlayer) {
+          zombie.findPathToPlayer();
+        }
+      }
+    }
   }
 }

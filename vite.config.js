@@ -35,7 +35,9 @@ export default {
   },
   resolve: {
     alias: {
-      '@': '/src'
+      '@': '/src',
+      'game': '/src/js/game',
+      'utils': '/src/js/utils'
     }
   }
 } 

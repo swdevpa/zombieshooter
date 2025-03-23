@@ -33,7 +33,7 @@
           "id": "modular-architecture",
           "title": "Establish modular code architecture",
           "status": "done",
-          "notes": "Implemented UiManager and LevelManager to enhance modularity and separation of concerns. Fixed missing manager files and integrated them into the game architecture. Addressed multiple initialization issues including DOM container error, object initialization order, UI dependencies, missing API methods, and ZombieManager's city reference issue to ensure proper component communication."
+          "notes": "Implemented UiManager and LevelManager to enhance modularity and separation of concerns. Fixed missing manager files and integrated them into the game architecture. Addressed multiple initialization issues including DOM container error, object initialization order, UI dependencies, missing API methods, and ZombieManager's city reference issue to ensure proper component communication. Fixed 'this.levelManager.init is not a function' error by adding the missing init() method to the LevelManager class."
         }
       ]
     },
@@ -161,8 +161,8 @@
         {
           "id": "damage-system",
           "title": "Implement damage system for zombies",
-          "status": "todo",
-          "notes": ""
+          "status": "done",
+          "notes": "Implemented a comprehensive damage system with the DamageManager class for centralized damage processing and visualization. Added damage zones (head, torso, limb) with different multipliers, hit visualization with damage flash on models, hit-specific animations, and blood effects. Integrated with ZombieModel and ZombieAnimation classes for seamless visual feedback."
         }
       ]
     },
@@ -172,8 +172,8 @@
         {
           "id": "health-bar",
           "title": "Create health bar UI (bottom left)",
-          "status": "todo",
-          "notes": ""
+          "status": "done",
+          "notes": "Implemented enhanced health bar with heart icon, dynamic color changes, and visual effects for damage and healing. Added critical health state with pulsing effects and screen shake on damage. Centralized health management via Player-UiManager-UI communication."
         },
         {
           "id": "ammo-counter",

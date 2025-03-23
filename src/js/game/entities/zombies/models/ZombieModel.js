@@ -41,6 +41,22 @@ export class ZombieModel {
     // Health bar components
     this.healthBarBackground = null;
     this.healthBar = null;
+    
+    // Materials for damage visualization
+    this.originalMaterials = {
+      body: null,
+      head: null
+    };
+    
+    // Damage visualization
+    this.damageFlash = false;
+    this.damageFlashStartTime = 0;
+    this.damageFlashDuration = 200; // milliseconds
+    this.damageFlashColor = new THREE.Color(0xff0000);
+    
+    // Flag to show health bar temporarily
+    this.showHealthBarTimer = 0;
+    this.showHealthBarDuration = 3000; // milliseconds
   }
   
   /**
@@ -405,6 +421,27 @@ export class ZombieModel {
   update(deltaTime) {
     // Update animation system
     this.animation.update(deltaTime);
+    
+    // Update damage flash
+    if (this.damageFlash) {
+      const elapsed = Date.now() - this.damageFlashStartTime;
+      if (elapsed >= this.damageFlashDuration) {
+        this.setDamageFlash(false);
+      }
+    }
+    
+    // Handle health bar visibility timer
+    if (this.showHealthBarTimer > 0) {
+      const elapsed = Date.now() - this.showHealthBarTimer;
+      if (elapsed >= this.showHealthBarDuration) {
+        // Hide health bar after duration
+        if (this.healthBarBackground && this.healthBar) {
+          this.healthBarBackground.visible = false;
+          this.healthBar.visible = false;
+        }
+        this.showHealthBarTimer = 0;
+      }
+    }
   }
   
   /**
@@ -419,5 +456,64 @@ export class ZombieModel {
    */
   getContainer() {
     return this.container;
+  }
+  
+  /**
+   * Set damage flash state
+   * @param {boolean} flashOn - Whether to show the damage flash
+   */
+  setDamageFlash(flashOn) {
+    this.damageFlash = flashOn;
+    
+    if (flashOn) {
+      this.damageFlashStartTime = Date.now();
+      
+      // Apply damage flash to all materials in all detail levels
+      for (const levelKey in this.detailLevels) {
+        const model = this.detailLevels[levelKey];
+        if (model) {
+          model.traverse((object) => {
+            if (object.isMesh && object.material) {
+              // Store original color if not already stored
+              if (!object.userData.originalColor) {
+                object.userData.originalColor = object.material.color.clone();
+              }
+              
+              // Apply damage flash color
+              object.material.color.set(this.damageFlashColor);
+            }
+          });
+        }
+      }
+    } else {
+      // Restore original colors
+      for (const levelKey in this.detailLevels) {
+        const model = this.detailLevels[levelKey];
+        if (model) {
+          model.traverse((object) => {
+            if (object.isMesh && object.material && object.userData.originalColor) {
+              object.material.color.copy(object.userData.originalColor);
+            }
+          });
+        }
+      }
+    }
+  }
+  
+  /**
+   * Show damage visualization including health bar and damage flash
+   */
+  showDamage() {
+    // Flash the zombie red
+    this.setDamageFlash(true);
+    
+    // Show health bar temporarily
+    this.showHealthBarTimer = Date.now();
+    
+    // Make health bar visible
+    if (this.healthBarBackground && this.healthBar) {
+      this.healthBarBackground.visible = true;
+      this.healthBar.visible = true;
+    }
   }
 } 
