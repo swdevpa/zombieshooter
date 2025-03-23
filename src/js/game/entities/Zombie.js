@@ -8,7 +8,7 @@ export class Zombie {
     
     // Process options with defaults
     this.options = {
-      type: 'standard', // standard, runner, brute
+      type: 'standard', // standard, runner, brute, exploder, spitter, screamer
       ...options
     };
     
@@ -40,6 +40,32 @@ export class Zombie {
     this.points = properties.points; // Score points for killing this zombie
     this.animationComplete = false; // Flag to track if death animation is done
     this.isMoving = false;
+
+    // Special effects
+    this.healthRegen = 0; // Health regeneration per second (set by modifiers)
+    
+    // Exploder zombie properties
+    this.explodeOnDeath = this.options.type === 'exploder'; // Always explode if exploder type
+    this.explosionDamage = properties.explosionDamage || 30; // Damage caused by explosion
+    this.explosionRadius = properties.explosionRadius || 3; // Radius of explosion
+    
+    // Spitter zombie properties
+    this.canSpitAcid = this.options.type === 'spitter';
+    this.projectileDamage = properties.projectileDamage || 12;
+    this.projectileSpeed = properties.projectileSpeed || 10.0;
+    this.acidDuration = properties.acidDuration || 3.0;
+    this.lastSpitTime = 0;
+    this.spitCooldown = 3.0; // Seconds between acid attacks
+    
+    // Screamer zombie properties
+    this.canScream = this.options.type === 'screamer';
+    this.screamRadius = properties.screamRadius || 15.0;
+    this.screamCooldown = properties.screamCooldown || 8.0;
+    this.lastScreamTime = 0;
+    this.hasScreamed = false; // Track if zombie has performed initial scream
+    
+    // Visual effect objects
+    this.specialEffects = [];
 
     // Initialize target position
     this.targetPosition = this.position.clone();
@@ -76,7 +102,7 @@ export class Zombie {
 
   /**
    * Get behavior configuration based on zombie type
-   * @param {string} type - Zombie type (standard, runner, brute)
+   * @param {string} type - Zombie type (standard, runner, brute, exploder, spitter, screamer)
    * @returns {Object} Behavior configuration
    */
   getBehaviorForType(type) {
@@ -102,6 +128,28 @@ export class Zombie {
         obstacles: 'break',      // Can break through some obstacles
         grouping: 'tight',       // Tightly groups with other zombies
         obstacleBreakStrength: 0.5 // Can break some obstacles
+      },
+      exploder: {
+        pathfinding: 'direct',   // Direct path to player
+        flanking: false,         // Doesn't try to flank
+        obstacles: 'avoid',      // Avoids obstacles
+        grouping: 'tight',       // Tightly groups to maximize explosion effect
+        obstacleBreakStrength: 0.1 // Can break weak obstacles when exploding
+      },
+      spitter: {
+        pathfinding: 'distance', // Tries to maintain optimal attack distance
+        flanking: true,          // Uses flanking to get good shot angles
+        obstacles: 'avoid',      // Avoids obstacles
+        grouping: 'loose',       // Loose grouping
+        obstacleBreakStrength: 0, // Cannot break obstacles
+        preferredDistance: 4.0    // Optimal distance for acid attacks
+      },
+      screamer: {
+        pathfinding: 'support',  // Stays near other zombies to maximize scream effect
+        flanking: false,         // Doesn't try to flank
+        obstacles: 'avoid',      // Avoids obstacles
+        grouping: 'command',     // Tries to be in the middle of zombie groups
+        obstacleBreakStrength: 0  // Cannot break obstacles
       }
     };
     
@@ -135,7 +183,10 @@ export class Zombie {
     this.updateMovement(deltaTime);
 
     // Update attack logic
-    this.updateAttack();
+    this.updateAttack(deltaTime);
+
+    // Handle special abilities based on zombie type
+    this.updateSpecialAbilities(deltaTime);
 
     // Update model animations
     if (this.model) {
@@ -152,6 +203,14 @@ export class Zombie {
       // Update health bar
       this.model.updateHealthBar(this.health, this.maxHealth);
     }
+
+    // Apply health regeneration if active
+    if (this.healthRegen > 0) {
+      this.regenerateHealth(deltaTime);
+    }
+    
+    // Update special effects
+    this.updateSpecialEffects(deltaTime);
   }
 
   /**
@@ -723,19 +782,31 @@ export class Zombie {
     return centerWalkable;
   }
 
-  updateAttack() {
-    if (!this.isAlive || !this.game.player || !this.game.player.isAlive) return;
+  updateAttack(deltaTime) {
+    if (!this.isAlive || !this.game.player) return;
     
-    // Check if player is in range for attack
-    const distanceToPlayer = this.container.position.distanceTo(this.game.player.container.position);
+    const time = performance.now() / 1000;
     
+    // Check if player is in attack range
+    const playerPosition = this.game.player.container.position;
+    const zombiePosition = this.container.position;
+    const distanceToPlayer = zombiePosition.distanceTo(playerPosition);
+    
+    // For spitters, prefer to use acid attack at range rather than getting close
+    if (this.canSpitAcid && distanceToPlayer < this.attackRange && distanceToPlayer > 2.0) {
+      // Handle in updateSpecialAbilities - don't try to get closer
+      return;
+    }
+    
+    // For standard melee attacks, need to be close to player
     if (distanceToPlayer <= this.attackRange) {
-      const currentTime = performance.now() / 1000;
+      // Face the player
+      this.rotateTowardsPlayer(deltaTime);
       
-      // Check if enough time has passed since last attack
-      if (currentTime - this.lastAttackTime >= this.attackSpeed) {
+      // Attack if cooldown has passed
+      if (time - this.lastAttackTime > this.attackSpeed) {
         this.attackPlayer();
-        this.lastAttackTime = currentTime;
+        this.lastAttackTime = time;
       }
     }
   }
@@ -785,23 +856,188 @@ export class Zombie {
     }
   }
 
+  /**
+   * Handle zombie death
+   */
   die() {
     this.isAlive = false;
+    
+    // Stop zombie movement
+    this.isMoving = false;
     
     // Play death animation
     this.playDeathAnimation();
     
-    // Clean up debug visualization
-    for (const marker of this.debugPathMarkers) {
-      this.game.scene.remove(marker);
+    // Handle exploder zombie death explosion
+    if (this.explodeOnDeath) {
+      // Small delay before explosion
+      setTimeout(() => {
+        this.explode();
+      }, 500);
     }
     
-    if (this.debugPathLine) {
-      this.game.scene.remove(this.debugPathLine);
+    // Remove from navigation grid if needed
+    if (this.game.navigationGrid) {
+      this.game.navigationGrid.removeEntity(this);
+    }
+  }
+  
+  /**
+   * Exploder zombie explosion
+   */
+  explode() {
+    const explosionPosition = this.container.position.clone();
+    
+    // Create explosion effect
+    this.createExplosionEffect(explosionPosition);
+    
+    // Damage nearby entities
+    this.damageNearbyEntities(explosionPosition);
+    
+    // Play explosion sound
+    // TODO: Add sound effect
+  }
+  
+  /**
+   * Create explosion visual effect
+   */
+  createExplosionEffect(position) {
+    // Create explosion geometry
+    const geometry = new THREE.SphereGeometry(0.1, 8, 8);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xff3300,
+      transparent: true,
+      opacity: 0.9
+    });
+    
+    const explosion = new THREE.Mesh(geometry, material);
+    explosion.position.copy(position);
+    explosion.position.y += 0.5; // Center of zombie
+    
+    // Add to scene
+    this.game.scene.add(explosion);
+    
+    // Add to game effects for animation
+    this.game.effects = this.game.effects || [];
+    this.game.effects.push({
+      mesh: explosion,
+      type: 'explosion',
+      startTime: performance.now() / 1000,
+      duration: 0.8,
+      maxScale: this.explosionRadius * 2, // Visual radius is larger than damage radius
+      update: (deltaTime, time) => {
+        // Get age
+        const age = time - this.startTime;
+        const progress = age / this.duration;
+        
+        // Expand quickly then slow down
+        let scale;
+        if (progress < 0.3) {
+          // Fast initial expansion
+          scale = this.maxScale * (progress / 0.3) * 0.8;
+        } else {
+          // Slower afterwards
+          scale = this.maxScale * (0.8 + 0.2 * ((progress - 0.3) / 0.7));
+        }
+        
+        explosion.scale.set(scale, scale, scale);
+        
+        // Color changes from orange to black
+        const color = new THREE.Color();
+        if (progress < 0.4) {
+          // Orange to yellow
+          color.setHSL(0.05 + progress * 0.05, 1.0, 0.5);
+        } else {
+          // Yellow to gray to black
+          color.setHSL(0.1, 1.0 - (progress - 0.4) * 1.6, 0.5 - (progress - 0.4) * 0.8);
+        }
+        explosion.material.color = color;
+        
+        // Fade out
+        explosion.material.opacity = 0.9 * (1 - Math.pow(progress, 2));
+        
+        // Remove when done
+        if (progress >= 1.0) {
+          this.game.scene.remove(explosion);
+          return true; // Signal to remove from array
+        }
+        
+        return false; // Keep updating
+      }
+    });
+    
+    // Create shockwave ring
+    const ringGeometry = new THREE.RingGeometry(0.1, 0.2, 32);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff8800,
+      transparent: true,
+      opacity: 0.7,
+      side: THREE.DoubleSide
+    });
+    
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.rotation.x = -Math.PI / 2; // Flat on ground
+    ring.position.copy(position);
+    ring.position.y = 0.1; // Just above ground
+    
+    // Add to scene
+    this.game.scene.add(ring);
+    
+    // Add to game effects
+    this.game.effects.push({
+      mesh: ring,
+      type: 'explosion_ring',
+      startTime: performance.now() / 1000,
+      duration: 0.6,
+      maxScale: this.explosionRadius * 3,
+      update: (deltaTime, time) => {
+        const age = time - this.startTime;
+        const progress = age / this.duration;
+        
+        // Expand quickly
+        const scale = this.maxScale * progress;
+        ring.scale.set(scale, scale, scale);
+        
+        // Fade out
+        ring.material.opacity = 0.7 * (1 - progress);
+        
+        // Remove when done
+        if (progress >= 1.0) {
+          this.game.scene.remove(ring);
+          return true;
+        }
+        
+        return false;
+      }
+    });
+  }
+  
+  /**
+   * Damage entities near explosion
+   */
+  damageNearbyEntities(position) {
+    // Damage player if in range
+    const distanceToPlayer = position.distanceTo(this.game.player.container.position);
+    if (distanceToPlayer <= this.explosionRadius) {
+      // Calculate damage based on distance (more damage closer to explosion)
+      const damageMultiplier = 1 - (distanceToPlayer / this.explosionRadius);
+      const damage = this.explosionDamage * damageMultiplier;
+      
+      // Apply damage to player
+      this.game.player.takeDamage(damage);
     }
     
-    this.debugPathMarkers = [];
-    this.debugPathLine = null;
+    // Damage other zombies if in range (friendly fire)
+    if (this.game.zombieManager) {
+      this.game.zombieManager.damageZombiesInRadius(
+        position,
+        this.explosionRadius,
+        this.explosionDamage * 0.5, // Reduced damage to other zombies
+        this // Don't damage self
+      );
+    }
+    
+    // TODO: Damage destructible environment objects
   }
 
   playDeathAnimation() {
@@ -833,6 +1069,346 @@ export class Zombie {
     // Clean up model
     if (this.model) {
       this.model.dispose();
+    }
+  }
+
+  /**
+   * Apply health regeneration based on regen rate
+   * @param {number} deltaTime - Time since last frame in seconds
+   */
+  regenerateHealth(deltaTime) {
+    if (this.health < this.maxHealth) {
+      // Calculate health to regenerate
+      const regenAmount = this.healthRegen * deltaTime;
+      
+      // Apply regeneration
+      this.health = Math.min(this.health + regenAmount, this.maxHealth);
+      
+      // Update health bar if visible
+      this.updateHealthBar();
+    }
+  }
+
+  /**
+   * Update special abilities based on zombie type
+   */
+  updateSpecialAbilities(deltaTime) {
+    const time = performance.now() / 1000;
+    
+    // Handle screamer zombie scream ability
+    if (this.canScream) {
+      // Check if enough time has passed since last scream
+      if (time - this.lastScreamTime > this.screamCooldown) {
+        // Only scream if player is nearby or hasn't screamed yet
+        const distanceToPlayer = this.container.position.distanceTo(this.game.player.container.position);
+        
+        if (!this.hasScreamed || distanceToPlayer < this.screamRadius * 0.7) {
+          this.scream();
+          this.lastScreamTime = time;
+          this.hasScreamed = true;
+        }
+      }
+    }
+    
+    // Handle spitter zombie acid attacks
+    if (this.canSpitAcid) {
+      // Only spit if cooldown has passed
+      if (time - this.lastSpitTime > this.spitCooldown) {
+        // Check if player is in range but not too close
+        const distanceToPlayer = this.container.position.distanceTo(this.game.player.container.position);
+        
+        if (distanceToPlayer < this.attackRange && distanceToPlayer > 2.0) {
+          // We have line of sight and good range - spit acid
+          this.spitAcid();
+          this.lastSpitTime = time;
+        }
+      }
+    }
+  }
+  
+  /**
+   * Screamer zombie's scream ability
+   * Alerts nearby zombies and draws them to player
+   */
+  scream() {
+    // Play scream animation
+    if (this.model) {
+      this.model.setAnimationState('screaming');
+    }
+    
+    // Play scream sound
+    // TODO: Add sound effect
+    
+    // Create visual effect for scream
+    this.createScreamEffect();
+    
+    // Alert nearby zombies
+    if (this.game.zombieManager) {
+      this.game.zombieManager.alertZombiesInRadius(
+        this.container.position, 
+        this.screamRadius, 
+        this
+      );
+    }
+  }
+  
+  /**
+   * Create visual effect for screamer's scream
+   */
+  createScreamEffect() {
+    // Create ripple effect to visualize scream radius
+    const geometry = new THREE.RingGeometry(0.5, 0.6, 32);
+    const material = new THREE.MeshBasicMaterial({ 
+      color: 0xffff00,
+      transparent: true,
+      opacity: 0.7,
+      side: THREE.DoubleSide
+    });
+    
+    const ring = new THREE.Mesh(geometry, material);
+    ring.rotation.x = -Math.PI / 2; // Flat on ground
+    ring.position.y = 0.1; // Slightly above ground
+    
+    this.container.add(ring);
+    
+    // Add to special effects for animation
+    this.specialEffects.push({
+      mesh: ring,
+      type: 'scream',
+      startTime: performance.now() / 1000,
+      duration: 2.0,
+      initialScale: 0.5,
+      targetScale: this.screamRadius
+    });
+  }
+  
+  /**
+   * Spitter zombie's acid attack
+   */
+  spitAcid() {
+    // Get direction to player
+    const playerPosition = this.game.player.container.position.clone();
+    const zombiePosition = this.container.position.clone();
+    const direction = new THREE.Vector3().subVectors(playerPosition, zombiePosition).normalize();
+    
+    // Adjust aim slightly upward for arcing effect
+    direction.y += 0.2;
+    
+    // Play spit animation
+    if (this.model) {
+      this.model.setAnimationState('spitting');
+    }
+    
+    // Create and launch acid projectile
+    this.createAcidProjectile(direction);
+    
+    // TODO: Add sound effect
+  }
+  
+  /**
+   * Create acid projectile
+   */
+  createAcidProjectile(direction) {
+    // Create projectile geometry
+    const geometry = new THREE.SphereGeometry(0.1, 8, 8);
+    
+    // Glowing green material for acid
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x39ff14,
+      transparent: true,
+      opacity: 0.8
+    });
+    
+    const projectile = new THREE.Mesh(geometry, material);
+    
+    // Position at zombie's head/mouth
+    projectile.position.copy(this.container.position);
+    projectile.position.y += 1.3; // Adjust to mouth height
+    projectile.position.z += 0.3; // Slightly in front of head
+    
+    // Add to scene
+    this.game.scene.add(projectile);
+    
+    // Create trail effect for projectile
+    const trail = this.createAcidTrail();
+    projectile.add(trail);
+    
+    // Add projectile data to game's projectiles list for update
+    this.game.projectiles = this.game.projectiles || [];
+    this.game.projectiles.push({
+      mesh: projectile,
+      direction: direction.clone(),
+      speed: this.projectileSpeed,
+      damage: this.projectileDamage,
+      type: 'acid',
+      owner: this,
+      trail: trail,
+      startTime: performance.now() / 1000,
+      duration: 3.0, // Max seconds before despawning
+      update: (deltaTime) => {
+        // Move projectile
+        projectile.position.addScaledVector(direction, this.projectileSpeed * deltaTime);
+        
+        // Apply gravity
+        direction.y -= 0.5 * deltaTime;
+        
+        // Check for collision with player
+        const distanceToPlayer = projectile.position.distanceTo(this.game.player.container.position);
+        if (distanceToPlayer < 0.5) {
+          // Hit player
+          this.game.player.takeDamage(this.projectileDamage);
+          this.createAcidSplash(projectile.position);
+          
+          // Remove projectile
+          this.game.scene.remove(projectile);
+          return true; // Signal to remove from array
+        }
+        
+        // Check for collision with environment
+        const raycaster = new THREE.Raycaster(
+          projectile.position.clone(),
+          direction.clone().normalize(),
+          0,
+          0.2
+        );
+        
+        const intersects = raycaster.intersectObjects(this.game.colliders || [], true);
+        if (intersects.length > 0) {
+          // Hit environment
+          this.createAcidSplash(projectile.position);
+          
+          // Remove projectile
+          this.game.scene.remove(projectile);
+          return true; // Signal to remove from array
+        }
+        
+        // Check lifetime
+        if (performance.now() / 1000 - this.startTime > this.duration) {
+          // Remove if too old
+          this.game.scene.remove(projectile);
+          return true;
+        }
+        
+        return false; // Keep updating
+      }
+    });
+  }
+  
+  /**
+   * Create trail effect for acid projectile
+   */
+  createAcidTrail() {
+    // Create trail
+    const trailGeometry = new THREE.BufferGeometry();
+    const trailMaterial = new THREE.LineBasicMaterial({
+      color: 0x39ff14,
+      transparent: true,
+      opacity: 0.5
+    });
+    
+    // Create points array for trail
+    const points = [];
+    for (let i = 0; i < 20; i++) {
+      points.push(new THREE.Vector3(0, 0, -i * 0.03));
+    }
+    
+    trailGeometry.setFromPoints(points);
+    const trail = new THREE.Line(trailGeometry, trailMaterial);
+    
+    return trail;
+  }
+  
+  /**
+   * Create acid splash effect on impact
+   */
+  createAcidSplash(position) {
+    // Create splash effect
+    const geometry = new THREE.CircleGeometry(0.5, 16);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x39ff14,
+      transparent: true,
+      opacity: 0.7,
+      side: THREE.DoubleSide
+    });
+    
+    const splash = new THREE.Mesh(geometry, material);
+    splash.position.copy(position);
+    splash.rotation.x = -Math.PI / 2; // Flat on ground/wall
+    
+    // Add to scene
+    this.game.scene.add(splash);
+    
+    // Add to game effects for animation and cleanup
+    this.game.effects = this.game.effects || [];
+    this.game.effects.push({
+      mesh: splash,
+      type: 'acid_splash',
+      startTime: performance.now() / 1000,
+      duration: this.acidDuration,
+      damageInterval: 0.5, // Damage player every 0.5 seconds if standing in acid
+      lastDamageTime: 0,
+      damageRadius: 0.5,
+      damage: this.projectileDamage * 0.5,
+      update: (deltaTime, time) => {
+        // Fade out over time
+        const age = time - this.startTime;
+        const opacity = 0.7 * (1 - age / this.duration);
+        splash.material.opacity = opacity;
+        
+        // Grow slightly
+        splash.scale.set(1 + age, 1 + age, 1);
+        
+        // Damage player if they're standing in acid
+        if (time - this.lastDamageTime > this.damageInterval) {
+          const distanceToPlayer = splash.position.distanceTo(this.game.player.container.position);
+          if (distanceToPlayer < this.damageRadius) {
+            this.game.player.takeDamage(this.damage * deltaTime);
+            this.lastDamageTime = time;
+          }
+        }
+        
+        // Remove if too old
+        if (age > this.duration) {
+          this.game.scene.remove(splash);
+          return true; // Signal to remove from array
+        }
+        
+        return false; // Keep updating
+      }
+    });
+  }
+  
+  /**
+   * Update special visual effects
+   */
+  updateSpecialEffects(deltaTime) {
+    const time = performance.now() / 1000;
+    
+    // Update and remove completed effects
+    for (let i = this.specialEffects.length - 1; i >= 0; i--) {
+      const effect = this.specialEffects[i];
+      const age = time - effect.startTime;
+      
+      switch (effect.type) {
+        case 'scream':
+          // Expand ring outward
+          const scale = effect.initialScale + (effect.targetScale - effect.initialScale) * (age / effect.duration);
+          effect.mesh.scale.set(scale, scale, scale);
+          
+          // Fade out
+          if (effect.mesh.material) {
+            effect.mesh.material.opacity = 0.7 * (1 - age / effect.duration);
+          }
+          break;
+        
+        // Add other effect types as needed
+      }
+      
+      // Remove old effects
+      if (age > effect.duration) {
+        this.container.remove(effect.mesh);
+        this.specialEffects.splice(i, 1);
+      }
     }
   }
 }

@@ -16,6 +16,26 @@ export class ZombieManager {
     this.isSpawning = false;
     this.currentWave = 1;
 
+    // New wave progression system
+    this.waveProgression = {
+      bossWaveInterval: 5, // Boss wave every X waves
+      maxWave: 30, // Maximum wave number (game win condition)
+      waveStats: {}, // Statistics for each wave
+      currentWaveStartTime: 0, // Track when wave started
+      killedThisWave: 0, // Zombies killed in current wave
+      waveModifiers: [], // Active modifiers for current wave
+      difficultyMultiplier: 1.0, // Scales with game difficulty
+    };
+
+    // Wave modifiers collection
+    this.availableModifiers = {
+      'fast': { name: 'Frenzy', description: 'Zombies move 50% faster', speedMultiplier: 1.5 },
+      'tough': { name: 'Resilient', description: 'Zombies have 50% more health', healthMultiplier: 1.5 },
+      'horde': { name: 'Horde', description: 'Double zombie spawn count', countMultiplier: 2.0 },
+      'healing': { name: 'Regenerating', description: 'Zombies slowly regenerate health', regenRate: 5 },
+      'explosive': { name: 'Volatile', description: 'Zombies explode on death', explosionRadius: 3 }
+    };
+
     // Spawn points will be determined when the city is loaded
     this.spawnPoints = [];
 
@@ -233,6 +253,11 @@ export class ZombieManager {
     // Store the current wave number
     this.currentWave = waveNumber;
 
+    // Update game state
+    if (this.game.gameState) {
+      this.game.gameState.wave = waveNumber;
+    }
+
     // Always recalculate spawn points for new waves
     // This ensures they work with procedural maps
     this.determineSpawnPoints();
@@ -247,149 +272,513 @@ export class ZombieManager {
 
     // Update debug visualization
     this.visualizeSpawnPoints();
+    
+    // Set up new wave stats tracking
+    this.setupWaveStats(waveNumber);
+    
+    // Apply wave modifiers based on wave number
+    this.setupWaveModifiers(waveNumber);
+    
+    // Calculate number of zombies for this wave
+    this.calculateZombiesForWave(waveNumber);
+    
+    // Show wave start message
+    this.showWaveStartMessage(waveNumber);
+    
+    // Start spawning zombies
+    this.isSpawning = true;
+    this.spawnNextZombie();
+    
+    console.log(`Starting wave ${waveNumber} with ${this.zombiesRemaining} zombies`);
+  }
 
-    // Calculate zombies for this wave
-    // Cap the maximum number of zombies per wave to prevent overwhelming numbers
-    const baseZombies = this.zombiesPerWave;
-    const extraZombies = Math.min((waveNumber - 1) * 5, 50); // Cap extra zombies at 50
-    this.zombiesRemaining = baseZombies + extraZombies;
-
-    // Initialize gameState if it doesn't exist
-    if (!this.game.gameState) {
-      console.warn('Game state not initialized, creating it now');
-      this.game.gameState = {
-        zombiesSpawned: 0,
-        zombiesKilled: 0,
-        wave: 1,
-        score: 0
-      };
+  /**
+   * Calculate the number of zombies for the current wave
+   * @param {number} waveNumber - The current wave number
+   */
+  calculateZombiesForWave(waveNumber) {
+    // Base number of zombies with progressive scaling
+    let baseZombies = this.zombiesPerWave + Math.floor(waveNumber * 2.5);
+    
+    // Apply difficulty multiplier
+    baseZombies = Math.ceil(baseZombies * this.waveProgression.difficultyMultiplier);
+    
+    // Apply horde modifier if active
+    if (this.hasWaveModifier('horde')) {
+      baseZombies = Math.ceil(baseZombies * this.availableModifiers.horde.countMultiplier);
     }
+    
+    // Check if this is a boss wave
+    if (this.isBossWave(waveNumber)) {
+      // Boss waves have special multipliers
+      baseZombies = Math.floor(baseZombies * 0.7); // Fewer total zombies
+    }
+    
+    // Cap at reasonable maximum based on difficulty and wave number
+    const maxZombiesPerWave = 50 + (waveNumber * 5);
+    this.zombiesRemaining = Math.min(baseZombies, maxZombiesPerWave);
+    
+    // Increase maximum concurrent zombies as waves progress
+    this.maxZombies = 15 + Math.min(waveNumber * 2, 35);
+  }
 
-    // Update game state
-    this.game.gameState.zombiesSpawned = 0;
-    this.game.gameState.zombiesKilled = 0; // Reset zombies killed counter for new wave
-    this.game.gameState.wave = waveNumber;
+  /**
+   * Setup wave stats tracking for the current wave
+   * @param {number} waveNumber - The current wave number
+   */
+  setupWaveStats(waveNumber) {
+    this.waveProgression.waveStats[waveNumber] = {
+      startTime: performance.now(),
+      zombiesSpawned: 0,
+      zombiesKilled: 0,
+      timeTaken: 0,
+      completed: false,
+      modifiers: []
+    };
+    
+    this.waveProgression.currentWaveStartTime = performance.now();
+    this.waveProgression.killedThisWave = 0;
+  }
 
-    // Start spawning
-    this.spawnZombies();
+  /**
+   * Apply wave modifiers based on wave number and randomization
+   * @param {number} waveNumber - The current wave number
+   */
+  setupWaveModifiers(waveNumber) {
+    // Clear previous wave modifiers
+    this.waveProgression.waveModifiers = [];
+    
+    // Boss waves have their own special modifiers
+    if (this.isBossWave(waveNumber)) {
+      this.setupBossWaveModifiers(waveNumber);
+      return;
+    }
+    
+    // Chance of having modifiers increases with wave number
+    const modifierChance = Math.min(0.2 + (waveNumber * 0.05), 0.8);
+    
+    if (Math.random() < modifierChance) {
+      // Determine how many modifiers to apply (1-2)
+      const modifierCount = Math.random() < 0.3 ? 2 : 1;
+      
+      // Get available modifier keys
+      const modifierKeys = Object.keys(this.availableModifiers);
+      
+      // Apply random modifiers
+      for (let i = 0; i < modifierCount; i++) {
+        // Avoid duplicate modifiers
+        let availableModifiers = modifierKeys.filter(
+          mod => !this.waveProgression.waveModifiers.includes(mod)
+        );
+        
+        if (availableModifiers.length > 0) {
+          const selectedModifier = availableModifiers[
+            Math.floor(Math.random() * availableModifiers.length)
+          ];
+          
+          this.waveProgression.waveModifiers.push(selectedModifier);
+          
+          // Add to wave stats
+          this.waveProgression.waveStats[waveNumber].modifiers.push(selectedModifier);
+        }
+      }
+    }
+    
+    // Log active modifiers
+    if (this.waveProgression.waveModifiers.length > 0) {
+      console.log(`Wave ${waveNumber} modifiers:`, this.waveProgression.waveModifiers);
+    }
+  }
+
+  /**
+   * Setup special modifiers for boss waves
+   * @param {number} waveNumber - The boss wave number
+   */
+  setupBossWaveModifiers(waveNumber) {
+    // Boss wave number (1st boss = 1, 2nd boss = 2, etc.)
+    const bossNumber = Math.floor(waveNumber / this.waveProgression.bossWaveInterval);
+    
+    // Different boss waves have different combinations of modifiers
+    switch (bossNumber % 3) {
+      case 0: // First boss type - tank zombies
+        this.waveProgression.waveModifiers.push('tough');
+        break;
+      case 1: // Second boss type - fast zombies
+        this.waveProgression.waveModifiers.push('fast');
+        break;
+      case 2: // Third boss type - explosive zombies
+        this.waveProgression.waveModifiers.push('explosive');
+        break;
+    }
+    
+    // Higher level bosses get multiple modifiers
+    if (bossNumber >= 3) {
+      this.waveProgression.waveModifiers.push('healing');
+    }
+    
+    // Add to wave stats
+    this.waveProgression.waveStats[waveNumber].modifiers = [...this.waveProgression.waveModifiers];
+    
+    console.log(`Boss wave ${waveNumber} modifiers:`, this.waveProgression.waveModifiers);
+  }
+
+  /**
+   * Set the game difficulty level
+   * @param {string} difficulty - Difficulty level ('easy', 'normal', 'hard')
+   */
+  setDifficulty(difficulty) {
+    switch (difficulty.toLowerCase()) {
+      case 'easy':
+        this.waveProgression.difficultyMultiplier = 0.7;
+        this.zombiesPerWave = 8;
+        break;
+      case 'hard':
+        this.waveProgression.difficultyMultiplier = 1.4;
+        this.zombiesPerWave = 15;
+        break;
+      case 'normal':
+      default:
+        this.waveProgression.difficultyMultiplier = 1.0;
+        this.zombiesPerWave = 10;
+        break;
+    }
+    
+    console.log(`Difficulty set to ${difficulty} (multiplier: ${this.waveProgression.difficultyMultiplier})`);
+  }
+
+  /**
+   * Check if the current wave is a boss wave
+   * @param {number} waveNumber - The wave number to check
+   * @returns {boolean} - True if this is a boss wave
+   */
+  isBossWave(waveNumber) {
+    return waveNumber % this.waveProgression.bossWaveInterval === 0;
+  }
+
+  /**
+   * Check if a specific wave modifier is active
+   * @param {string} modifierKey - The modifier key to check for
+   * @returns {boolean} - True if the modifier is active
+   */
+  hasWaveModifier(modifierKey) {
+    return this.waveProgression.waveModifiers.includes(modifierKey);
+  }
+
+  /**
+   * Get a subtitle for the wave based on type and modifiers
+   * @param {number} waveNumber - The current wave number
+   * @returns {string} - A subtitle for the wave
+   */
+  getWaveSubtitle(waveNumber) {
+    // Check if this is a boss wave
+    if (this.isBossWave(waveNumber)) {
+      return `BOSS WAVE - Prepare for a challenge!`;
+    }
+    
+    // If we have modifiers, display them instead
+    if (this.waveProgression.waveModifiers.length > 0) {
+      const modifierNames = this.waveProgression.waveModifiers.map(
+        key => this.availableModifiers[key].name
+      );
+      
+      return `Special wave: ${modifierNames.join(', ')}`;
+    }
+    
+    // Otherwise use standard subtitles
+    const subtitles = [
+      "They're Coming...",
+      "Stay Alert!",
+      "Keep Fighting!",
+      "Don't Give Up!",
+      "They're Getting Stronger!",
+      "Fight for Survival!",
+      "They're Everywhere!",
+      "No Mercy!",
+      "The Horde Approaches...",
+      "Prepare for Battle!"
+    ];
+    
+    // Select based on wave number or randomly for higher waves
+    if (waveNumber <= 10) {
+      return subtitles[waveNumber - 1];
+    } else {
+      return subtitles[Math.floor(Math.random() * subtitles.length)];
+    }
+  }
+
+  /**
+   * Show wave start message with special formatting for boss waves
+   * @param {number} waveNumber - The wave number to display
+   */
+  showWaveStartMessage(waveNumber) {
+    // Get subtitle for this wave
+    const subtitle = this.getWaveSubtitle(waveNumber);
+    
+    // Check if UI manager exists
+    if (this.game.uiManager) {
+      if (this.isBossWave(waveNumber)) {
+        // Boss waves get special UI treatment
+        this.game.uiManager.showBossWave(waveNumber, subtitle);
+      } else {
+        // Normal wave message
+        this.game.uiManager.showWaveMessage(waveNumber, subtitle);
+      }
+    }
+  }
+
+  /**
+   * Spawn a single zombie and queue the next spawn
+   */
+  spawnNextZombie() {
+    if (!this.isSpawning || this.zombiesRemaining <= 0) return;
+    
+    // Get current active zombie count
+    const activeZombieCount = this.zombies.filter(zombie => zombie.isAlive).length;
+    
+    // Only spawn if below max zombies and we have remaining zombies to spawn
+    if (activeZombieCount < this.maxZombies && this.zombiesRemaining > 0) {
+      // Determine zombie type based on wave number
+      const zombieType = this.getRandomZombieType();
+      
+      // Spawn the zombie
+      this.spawnZombie(zombieType);
+      
+      // Decrease remaining count
+      this.zombiesRemaining--;
+    }
+    
+    // Schedule next spawn based on difficulty and current count
+    const baseDelay = 1000; // 1 second base delay
+    const waveModifier = Math.max(0.5, 1 - (this.currentWave * 0.05)); // Waves get faster
+    const countModifier = Math.max(0.5, 1 - (activeZombieCount / this.maxZombies)); // Spawn slower if near max
+    
+    const nextSpawnDelay = baseDelay * waveModifier * countModifier;
+    
+    // Schedule next spawn
+    setTimeout(() => this.spawnNextZombie(), nextSpawnDelay);
+    
+    // If this is the last zombie, check if wave is complete
+    if (this.zombiesRemaining <= 0) {
+      this.checkWaveComplete();
+    }
+  }
+
+  /**
+   * Get a random zombie type based on current wave
+   * @returns {string} - The zombie type to spawn
+   */
+  getRandomZombieType() {
+    // Check if this is a boss wave
+    if (this.isBossWave(this.currentWave)) {
+      // In boss waves, higher chance of special zombies
+      const bossWaveTypes = this.zombieFactory.getBossWaveZombieTypes(this.currentWave, 1);
+      return bossWaveTypes[0];
+    }
+    
+    // Use ZombieFactory to determine types for current wave
+    const types = this.zombieFactory.getZombieTypesForWave(this.currentWave, 1);
+    return types[0]; // Return the single type from the array
+  }
+
+  /**
+   * Check if the current wave is complete and trigger next wave
+   */
+  checkWaveComplete() {
+    // Wait for all zombies to be killed
+    const zombieCheckInterval = setInterval(() => {
+      if (this.zombies.filter(zombie => zombie.isAlive).length === 0) {
+        // Wave is complete, stop checking
+        clearInterval(zombieCheckInterval);
+        
+        // Trigger wave complete
+        this.onWaveComplete();
+      }
+    }, 1000);
   }
 
   spawnZombies() {
-    // Set spawning flag
-    this.isSpawning = true;
-
-    // Initialize gameState if needed
-    if (!this.game.gameState) {
-      console.warn('Game state not initialized, creating it now');
-      this.game.gameState = {
-        zombiesSpawned: 0,
-        zombiesKilled: 0,
-        wave: 1,
-        score: 0
-      };
-    }
-
-    // Get zombie types for this wave
-    const zombieTypes = this.zombieFactory.getZombieTypesForWave(
-      this.currentWave, 
-      this.zombiesRemaining
-    );
-
-    // Spawn mit größerer Verzögerung, damit Zombies mehr Zeit haben
-    const spawnInterval = setInterval(() => {
-      // Stop if no more zombies to spawn or we hit the max
-      if (this.zombiesRemaining <= 0 || this.zombies.length >= this.maxZombies) {
-        clearInterval(spawnInterval);
-        this.isSpawning = false;
-        return;
-      }
-
-      // Spawn a zombie with type based on the pre-calculated array
-      const zombieType = zombieTypes[this.zombiesRemaining - 1] || 'standard';
-      this.spawnZombie(zombieType);
-      this.zombiesRemaining--;
-      this.game.gameState.zombiesSpawned++;
-    }, 2000); // Spawn a zombie every 2 seconds instead of 1 second
+    // This method is now deprecated in favor of spawnNextZombie
+    // which handles spawning in a more controlled, sequential manner
+    console.warn('spawnZombies() is deprecated, use spawnNextZombie() instead');
+    this.spawnNextZombie();
   }
 
+  /**
+   * Spawn a zombie of the specified type at a valid spawn point
+   * @param {string} type - The type of zombie to spawn (standard, runner, brute)
+   * @returns {Zombie} - The spawned zombie instance
+   */
   spawnZombie(type = 'standard') {
-    // Skip if at max zombies
-    if (this.zombies.length >= this.maxZombies) {
-      return null;
-    }
-
-    // Check if we have spawn points
+    // Don't spawn if no spawn points
     if (this.spawnPoints.length === 0) {
-      console.warn('No spawn points available');
-      this.determineSpawnPoints();
+      console.warn('No valid spawn points to spawn zombie');
       return null;
     }
-
+    
     // Select a random spawn point
     const spawnIndex = Math.floor(Math.random() * this.spawnPoints.length);
     const spawnPoint = this.spawnPoints[spawnIndex];
-
-    // Validate the spawn point with navigation grid
-    let isValidSpawn = true;
-    if (this.game.navigationGrid) {
-      isValidSpawn = this.game.navigationGrid.isWalkable(spawnPoint);
-    }
-
-    // Skip if spawn point is not valid
-    if (!isValidSpawn) {
-      console.warn(`Invalid spawn point at ${spawnPoint.x}, ${spawnPoint.z}`);
+    
+    try {
+      // Create the zombie
+      const zombie = new Zombie(this.game, this.assetLoader, spawnPoint, { type });
+      
+      // Apply wave modifiers
+      this.applyWaveModifiersToZombie(zombie);
+      
+      // Add to the scene
+      this.game.scene.add(zombie.container);
+      
+      // Add to zombies array
+      this.zombies.push(zombie);
+      
+      // Create spawn effect
+      this.createSpawnEffect(spawnPoint);
+      
+      // Track zombie spawn in wave stats
+      if (this.waveProgression.waveStats[this.currentWave]) {
+        this.waveProgression.waveStats[this.currentWave].zombiesSpawned++;
+      }
+      
+      // Update game state
+      if (this.game.gameState) {
+        this.game.gameState.zombiesSpawned++;
+      }
+      
+      console.log(`Spawned ${type} zombie at ${spawnPoint.x.toFixed(2)}, ${spawnPoint.y.toFixed(2)}, ${spawnPoint.z.toFixed(2)}`);
+      
+      return zombie;
+    } catch (error) {
+      console.error('Error spawning zombie:', error);
       return null;
     }
+  }
 
-    // Create a new zombie
-    const zombie = new Zombie(this.game, this.assetLoader, spawnPoint, { type });
-
-    // Add to zombies array
-    this.zombies.push(zombie);
-
-    // Add to scene
-    this.game.scene.add(zombie.container);
-
-    // Update tracking counters
-    this.zombiesRemaining--;
-    if (this.game.gameState) {
-      this.game.gameState.zombiesSpawned++;
+  /**
+   * Create a visual effect at the spawn point
+   * @param {THREE.Vector3} position - The position to create the effect
+   */
+  createSpawnEffect(position) {
+    // Create a simple particle effect
+    const particleCount = 15;
+    const particles = [];
+    
+    // Create particle geometry
+    const particleGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    
+    // Create particle material
+    const particleMaterial = new THREE.PointsMaterial({
+      color: 0x331111,
+      size: 0.2,
+      transparent: true,
+      opacity: 0.8
+    });
+    
+    // Set initial positions
+    for (let i = 0; i < particleCount; i++) {
+      const i3 = i * 3;
+      positions[i3] = position.x;
+      positions[i3 + 1] = position.y + 0.1;
+      positions[i3 + 2] = position.z;
+      
+      // Create particle data
+      particles.push({
+        velocity: new THREE.Vector3(
+          (Math.random() - 0.5) * 2,
+          Math.random() * 2,
+          (Math.random() - 0.5) * 2
+        ),
+        lifetime: 1 + Math.random()
+      });
     }
-
-    return zombie;
+    
+    particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    
+    // Create particle system
+    const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+    this.game.scene.add(particleSystem);
+    
+    // Update particles
+    let elapsed = 0;
+    const updateInterval = 1/60; // 60fps
+    
+    const updateParticles = () => {
+      elapsed += updateInterval;
+      
+      // Update positions
+      let anyAlive = false;
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const particle = particles[i];
+        
+        // Check if particle is still alive
+        if (elapsed < particle.lifetime) {
+          anyAlive = true;
+          
+          // Update position
+          positions[i3] += particle.velocity.x * updateInterval;
+          positions[i3 + 1] += particle.velocity.y * updateInterval;
+          positions[i3 + 2] += particle.velocity.z * updateInterval;
+          
+          // Add gravity
+          particle.velocity.y -= 3 * updateInterval;
+          
+          // Fade out
+          particleMaterial.opacity = Math.max(0, 0.8 * (1 - (elapsed / particle.lifetime)));
+        }
+      }
+      
+      // Update buffer attribute
+      particleGeometry.attributes.position.needsUpdate = true;
+      
+      // Continue if any particles are alive
+      if (anyAlive) {
+        setTimeout(updateParticles, updateInterval * 1000);
+      } else {
+        // Clean up
+        this.game.scene.remove(particleSystem);
+        particleGeometry.dispose();
+        particleMaterial.dispose();
+      }
+    };
+    
+    // Start updating
+    setTimeout(updateParticles, updateInterval * 1000);
   }
 
   update(deltaTime) {
-    // For performance, limit the number of updates based on current detail level
-    let updateCount = 0;
-    const maxUpdatesPerFrame = 20; // Limit number of full updates
-
-    // Update each zombie's position and actions
+    // Update existing zombies
     for (let i = this.zombies.length - 1; i >= 0; i--) {
       const zombie = this.zombies[i];
-
-      // If zombie is dead and animation is complete, remove it
+      
+      // Remove dead zombies after their animation completes
       if (!zombie.isAlive && zombie.animationComplete) {
         // Remove from scene
         this.game.scene.remove(zombie.container);
+        
+        // Dispose of resources
+        zombie.dispose();
+        
         // Remove from array
         this.zombies.splice(i, 1);
+        
         continue;
       }
-
-      // Full update for zombies that are close to player or in view
-      if (updateCount < maxUpdatesPerFrame && this.shouldFullyUpdate(zombie)) {
+      
+      // Performance optimization: fully update zombies near the player,
+      // simplified update for distant zombies
+      if (this.shouldFullyUpdate(zombie)) {
         zombie.update(deltaTime);
-        updateCount++;
       } else {
-        // Simplified update for distant zombies (pathfinding only)
         this.simplifiedUpdate(zombie, deltaTime);
       }
     }
-
-    // Check if wave is complete
-    if (!this.isSpawning && this.isWaveComplete()) {
-      this.onWaveComplete();
+    
+    // If wave is complete and all zombies are dead, start next wave
+    if (!this.isSpawning && this.zombies.length === 0 && !this.isWaveTransitioning) {
+      this.prepareNextWave();
     }
   }
 
@@ -462,18 +851,32 @@ export class ZombieManager {
   }
 
   onWaveComplete() {
-    // End of wave logic
-    console.log(`Wave ${this.currentWave} complete!`);
-
-    // Update game state
-    if (this.game.gameState) {
-      this.game.gameState.score += 100 * this.currentWave; // Bonus for completing wave
+    console.log(`Wave ${this.currentWave} completed!`);
+    
+    // Stop spawning
+    this.isSpawning = false;
+    
+    // Calculate time taken for the wave
+    const timeTaken = (performance.now() - this.waveProgression.currentWaveStartTime) / 1000;
+    
+    // Update wave stats
+    if (this.waveProgression.waveStats[this.currentWave]) {
+      this.waveProgression.waveStats[this.currentWave].timeTaken = timeTaken;
+      this.waveProgression.waveStats[this.currentWave].completed = true;
     }
-
-    // Start next wave after a delay
-    setTimeout(() => {
-      this.startNewWave(this.currentWave + 1);
-    }, 5000); // 5 second break between waves
+    
+    // Award wave completion bonus
+    this.awardWaveCompletionBonus();
+    
+    // Log wave statistics
+    console.log(`Wave ${this.currentWave} statistics:`, 
+      this.waveProgression.waveStats[this.currentWave]);
+    
+    // Check for game completion
+    if (this.currentWave >= this.waveProgression.maxWave) {
+      this.onGameComplete();
+      return;
+    }
   }
 
   findFallbackSpawnPoint() {
@@ -537,5 +940,327 @@ export class ZombieManager {
     }
     
     return true;
+  }
+
+  /**
+   * Prepare for the next wave with a delay
+   */
+  prepareNextWave() {
+    // Set transitioning flag to prevent multiple calls
+    this.isWaveTransitioning = true;
+    
+    // Show wave complete message if UI manager exists
+    if (this.game.uiManager) {
+      this.game.uiManager.showWaveComplete(this.currentWave);
+    }
+    
+    // Determine delay based on wave type
+    let delay = 5000; // 5 seconds between normal waves
+    
+    // Longer delay after boss waves
+    if (this.isBossWave(this.currentWave)) {
+      delay = 10000; // 10 seconds after boss waves
+    }
+    
+    // Wait before starting next wave
+    setTimeout(() => {
+      // Start next wave
+      this.startNewWave(this.currentWave + 1);
+      
+      // Reset transitioning flag
+      this.isWaveTransitioning = false;
+    }, delay);
+  }
+
+  /**
+   * Apply wave modifiers to a zombie
+   * @param {Zombie} zombie - The zombie to modify
+   */
+  applyWaveModifiersToZombie(zombie) {
+    // Apply active wave modifiers
+    for (const modifier of this.waveProgression.waveModifiers) {
+      const modData = this.availableModifiers[modifier];
+      
+      if (!modData) continue;
+      
+      // Apply modifier effects
+      if (modData.speedMultiplier) {
+        zombie.speed *= modData.speedMultiplier;
+      }
+      
+      if (modData.healthMultiplier) {
+        zombie.health *= modData.healthMultiplier;
+        zombie.maxHealth *= modData.healthMultiplier;
+      }
+      
+      if (modData.regenRate) {
+        zombie.healthRegen = modData.regenRate;
+      }
+      
+      if (modData.explosionRadius) {
+        zombie.explodeOnDeath = true;
+        zombie.explosionRadius = modData.explosionRadius;
+      }
+    }
+    
+    // Boss wave zombies get slight health boost regardless of modifiers
+    if (this.isBossWave(this.currentWave)) {
+      zombie.health *= 1.2;
+      zombie.maxHealth *= 1.2;
+    }
+  }
+
+  /**
+   * Handle game completion after final wave
+   */
+  onGameComplete() {
+    console.log('All waves completed! Game won!');
+    
+    // Update game state
+    if (this.game.gameState) {
+      this.game.gameState.status = 'won';
+    }
+    
+    // Show game complete UI if available
+    if (this.game.uiManager) {
+      this.game.uiManager.showGameComplete(this.waveProgression.waveStats);
+    }
+  }
+
+  /**
+   * Award bonus points and items for completing a wave
+   */
+  awardWaveCompletionBonus() {
+    if (!this.game.player) return;
+    
+    // Calculate wave bonus based on wave number and difficulty
+    const baseBonus = this.currentWave * 100;
+    const difficultyBonus = Math.floor(baseBonus * this.waveProgression.difficultyMultiplier);
+    
+    // Additional bonus for boss waves
+    const bossMultiplier = this.isBossWave(this.currentWave) ? 2 : 1;
+    const totalBonus = difficultyBonus * bossMultiplier;
+    
+    // Add score to player
+    this.game.player.addScore(totalBonus);
+    
+    // Show bonus message
+    if (this.game.uiManager) {
+      this.game.uiManager.showBonusMessage(
+        `Wave ${this.currentWave} Completed!`, 
+        `+${totalBonus} bonus points`
+      );
+    }
+    
+    // Boss waves have a chance for health pack
+    if (this.isBossWave(this.currentWave) && Math.random() < 0.7) {
+      // Spawn health pack near player if entity manager exists
+      if (this.game.entityManager) {
+        this.game.entityManager.spawnHealthPack(this.game.player.position);
+      }
+    }
+    
+    // Spawn ammo pickups for weapon
+    if (this.game.entityManager && Math.random() < 0.8) {
+      const pickupCount = this.isBossWave(this.currentWave) ? 3 : 1;
+      this.game.entityManager.spawnAmmoPickups(pickupCount);
+    }
+  }
+
+  /**
+   * Record zombie kill in wave statistics
+   * @param {Zombie} zombie - The killed zombie
+   */
+  recordZombieKill(zombie) {
+    // Increment stats counters
+    if (this.waveProgression.waveStats[this.currentWave]) {
+      this.waveProgression.waveStats[this.currentWave].zombiesKilled++;
+    }
+    
+    this.waveProgression.killedThisWave++;
+    
+    // Update game state
+    if (this.game.gameState) {
+      this.game.gameState.zombiesKilled++;
+    }
+    
+    // Check for zombie explosion on death
+    if (zombie.explodeOnDeath) {
+      this.triggerZombieExplosion(zombie);
+    }
+  }
+
+  /**
+   * Trigger explosion effect for zombies with explosive modifier
+   * @param {Zombie} zombie - The zombie that's exploding
+   */
+  triggerZombieExplosion(zombie) {
+    // Create explosion effect
+    if (this.game.effectsManager) {
+      this.game.effectsManager.createExplosion(zombie.position, {
+        radius: zombie.explosionRadius || 3
+      });
+    }
+    
+    // Deal damage to nearby entities including player
+    const radius = zombie.explosionRadius || 3;
+    const explosionPos = zombie.position.clone();
+    
+    // Damage nearby zombies
+    for (const otherZombie of this.zombies) {
+      // Skip the exploding zombie and already dead zombies
+      if (otherZombie === zombie || !otherZombie.isAlive) continue;
+      
+      const distance = otherZombie.position.distanceTo(explosionPos);
+      
+      if (distance <= radius) {
+        // Calculate damage based on distance (more damage closer to explosion)
+        const damage = Math.ceil(50 * (1 - (distance / radius)));
+        otherZombie.takeDamage(damage);
+      }
+    }
+    
+    // Damage player if nearby
+    if (this.game.player) {
+      const playerDistance = this.game.player.position.distanceTo(explosionPos);
+      
+      if (playerDistance <= radius) {
+        const playerDamage = Math.ceil(25 * (1 - (playerDistance / radius)));
+        this.game.player.takeDamage(playerDamage);
+      }
+    }
+  }
+
+  /**
+   * Alert zombies in a radius to a player's position
+   * Used by screamer zombies
+   * @param {THREE.Vector3} position - Center position of the scream
+   * @param {number} radius - Radius of effect
+   * @param {Object} source - The zombie that screamed
+   */
+  alertZombiesInRadius(position, radius, source) {
+    // Check if we have zombies to alert
+    if (!this.zombies || this.zombies.length === 0) return;
+    
+    // Create an alert visual effect
+    this.createAlertEffect(position, radius);
+    
+    // For each zombie in range, make them aware of player
+    let alertedCount = 0;
+    
+    for (const zombie of this.zombies) {
+      // Skip the source zombie and dead zombies
+      if (zombie === source || !zombie.isAlive) continue;
+      
+      // Calculate distance to scream
+      const distance = zombie.container.position.distanceTo(position);
+      
+      // If in range, alert zombie
+      if (distance <= radius) {
+        // Force a path recalculation to the player
+        zombie.forcePathRecalculation();
+        
+        // Increase speed temporarily for a "rush" effect
+        const originalSpeed = zombie.speed;
+        zombie.speed *= 1.5;
+        
+        // Reset speed after a delay
+        setTimeout(() => {
+          if (zombie && zombie.isAlive) {
+            zombie.speed = originalSpeed;
+          }
+        }, 5000);
+        
+        alertedCount++;
+      }
+    }
+    
+    console.log(`Alerted ${alertedCount} zombies with scream from a ${source.options.type} zombie`);
+  }
+  
+  /**
+   * Create alert effect for screamer ability
+   * @param {THREE.Vector3} position - Center of effect
+   * @param {number} radius - Radius of effect
+   */
+  createAlertEffect(position, radius) {
+    // Create a visual indicator for debugging and player feedback
+    const geometry = new THREE.CircleGeometry(radius, 32);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffff00,
+      transparent: true,
+      opacity: 0.2,
+      side: THREE.DoubleSide
+    });
+    
+    const alertCircle = new THREE.Mesh(geometry, material);
+    alertCircle.rotation.x = -Math.PI / 2; // Flat on ground
+    alertCircle.position.copy(position);
+    alertCircle.position.y = 0.1; // Just above ground
+    
+    // Add to scene
+    this.game.scene.add(alertCircle);
+    
+    // Track animation and remove after delay
+    this.game.effects = this.game.effects || [];
+    this.game.effects.push({
+      mesh: alertCircle,
+      type: 'alert',
+      startTime: performance.now() / 1000,
+      duration: 1.5,
+      update: (deltaTime, time) => {
+        const age = time - this.startTime;
+        const progress = age / this.duration;
+        
+        // Fade out
+        alertCircle.material.opacity = 0.2 * (1 - progress);
+        
+        // Pulse
+        const scale = 1 + 0.2 * Math.sin(progress * Math.PI * 4);
+        alertCircle.scale.set(scale, scale, scale);
+        
+        // Remove when done
+        if (progress >= 1.0) {
+          this.game.scene.remove(alertCircle);
+          return true;
+        }
+        
+        return false;
+      }
+    });
+  }
+  
+  /**
+   * Damage zombies in a radius
+   * Used by exploder zombies
+   * @param {THREE.Vector3} position - Center of explosion
+   * @param {number} radius - Explosion radius
+   * @param {number} damage - Base damage amount
+   * @param {Object} source - Source zombie to exclude from damage
+   */
+  damageZombiesInRadius(position, radius, damage, source) {
+    // Check if we have zombies to damage
+    if (!this.zombies || this.zombies.length === 0) return;
+    
+    let damagedCount = 0;
+    
+    for (const zombie of this.zombies) {
+      // Skip the source zombie and dead zombies
+      if (zombie === source || !zombie.isAlive) continue;
+      
+      // Calculate distance to explosion
+      const distance = zombie.container.position.distanceTo(position);
+      
+      // If in range, apply damage with falloff based on distance
+      if (distance <= radius) {
+        const falloff = 1 - (distance / radius);
+        const actualDamage = damage * falloff;
+        
+        zombie.takeDamage(actualDamage);
+        damagedCount++;
+      }
+    }
+    
+    console.log(`Damaged ${damagedCount} zombies from an explosion`);
   }
 }

@@ -52,6 +52,70 @@ export class UiManager {
     }
   }
 
+  /**
+   * Show wave message with subtitle
+   * @param {string} message - The main wave message
+   * @param {string} subtitle - The subtitle message
+   */
+  showWaveMessage(message, subtitle) {
+    if (this.ui) {
+      this.ui.showWaveMessage(message, subtitle);
+    }
+  }
+
+  /**
+   * Show wave complete message
+   * @param {number} waveNumber - The completed wave number
+   */
+  showWaveComplete(waveNumber) {
+    if (this.ui) {
+      this.ui.showWaveComplete(waveNumber);
+    }
+  }
+
+  /**
+   * Show boss wave message
+   * @param {number} waveNumber - The boss wave number
+   * @param {string} subtitle - Subtitle for the wave
+   */
+  showBossWave(waveNumber, subtitle) {
+    if (this.ui) {
+      this.ui.showBossWave(waveNumber, subtitle);
+    }
+  }
+
+  /**
+   * Show wave message
+   * @param {number} waveNumber - The wave number
+   * @param {string} subtitle - Subtitle for the wave
+   */
+  showWaveMessage(waveNumber, subtitle) {
+    if (this.ui) {
+      this.ui.showWaveMessage(waveNumber, subtitle);
+    }
+  }
+
+  /**
+   * Show game completion screen with statistics
+   * @param {object} waveStats - Statistics for all completed waves
+   */
+  showGameComplete(waveStats) {
+    if (this.ui) {
+      this.ui.showGameComplete(waveStats);
+    }
+  }
+
+  /**
+   * Show bonus message
+   * @param {string} message - The main message
+   * @param {string} details - Additional details
+   */
+  showBonusMessage(message, details) {
+    if (this.ui) {
+      this.ui.showBonusMessage(message, details);
+    }
+  }
+
   // Game state UI
   showGameOver(score) {
     if (this.ui) {

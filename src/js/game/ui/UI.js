@@ -247,48 +247,302 @@ export class UI {
     }
   }
 
-  showWaveMessage(waveNumber) {
-    // Create wave message element if it doesn't exist
-    if (!this.waveMessageElement) {
-      this.waveMessageElement = document.createElement('div');
-      this.waveMessageElement.className = 'wave-message';
-      document.body.appendChild(this.waveMessageElement);
-      
-      // Add CSS if not present
-      if (!document.getElementById('wave-message-style')) {
-        const style = document.createElement('style');
-        style.id = 'wave-message-style';
-        style.textContent = `
-          .wave-message {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 32px;
-            color: #fff;
-            text-shadow: 0 0 10px #f00;
-            opacity: 0;
-            transition: opacity 1s;
-            pointer-events: none;
-            text-align: center;
-          }
-          
-          .wave-message.show {
-            opacity: 1;
-          }
-        `;
-        document.head.appendChild(style);
-      }
+  showWaveMessage(waveNumber, subtitle) {
+    // Create a wave message element if it doesn't exist
+    let waveMessageElement = document.getElementById('wave-message');
+    
+    if (!waveMessageElement) {
+      waveMessageElement = document.createElement('div');
+      waveMessageElement.id = 'wave-message';
+      document.body.appendChild(waveMessageElement);
     }
     
-    // Set message content and show
-    this.waveMessageElement.textContent = `Wave ${waveNumber} Incoming`;
-    this.waveMessageElement.classList.add('show');
+    // Set the wave message
+    waveMessageElement.innerHTML = `
+      <div>WAVE ${waveNumber}</div>
+      ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ''}
+    `;
+    waveMessageElement.style.display = 'flex';
     
-    // Hide after 3 seconds
+    // Animate the wave message
+    waveMessageElement.classList.add('show');
+    
+    // Hide the wave message after a delay
     setTimeout(() => {
-      this.waveMessageElement.classList.remove('show');
-    }, 3000);
+      waveMessageElement.classList.remove('show');
+      setTimeout(() => {
+        waveMessageElement.style.display = 'none';
+      }, 1000); // Animation duration
+    }, 3000); // Display duration
+  }
+
+  /**
+   * Show boss wave message with special styling
+   * @param {number} waveNumber - The wave number
+   * @param {string} subtitle - Optional subtitle
+   */
+  showBossWave(waveNumber, subtitle) {
+    // Create a boss wave message element if it doesn't exist
+    let bossWaveElement = document.getElementById('boss-wave-message');
+    
+    if (!bossWaveElement) {
+      bossWaveElement = document.createElement('div');
+      bossWaveElement.id = 'boss-wave-message';
+      document.body.appendChild(bossWaveElement);
+      
+      // Add special styling for boss waves
+      const style = document.createElement('style');
+      style.textContent = `
+        #boss-wave-message {
+          position: fixed;
+          top: 30%;
+          left: 0;
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          font-family: 'Impact', sans-serif;
+          font-size: 48px;
+          color: #ff0000;
+          text-shadow: 0 0 10px #ff0000, 0 0 20px #ff0000;
+          text-align: center;
+          opacity: 0;
+          transform: scale(0.5);
+          transition: opacity 0.5s, transform 0.5s;
+        }
+        
+        #boss-wave-message.show {
+          opacity: 1;
+          transform: scale(1);
+        }
+        
+        #boss-wave-message .subtitle {
+          font-size: 24px;
+          margin-top: 10px;
+          color: #ffffff;
+          text-shadow: 0 0 5px #ff0000;
+        }
+        
+        #boss-wave-message .warning {
+          font-size: 32px;
+          margin-top: 20px;
+          color: #ffff00;
+          text-shadow: 0 0 8px #ff4400;
+          animation: pulse 1s infinite alternate;
+        }
+        
+        @keyframes pulse {
+          from { opacity: 0.7; }
+          to { opacity: 1; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    
+    // Set the boss wave message
+    bossWaveElement.innerHTML = `
+      <div>BOSS WAVE ${waveNumber}</div>
+      ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ''}
+      <div class="warning">PREPARE FOR BATTLE!</div>
+    `;
+    bossWaveElement.style.display = 'flex';
+    
+    // Animate the boss wave message
+    bossWaveElement.classList.add('show');
+    
+    // Play boss wave sound if available
+    if (this.game.soundManager) {
+      this.game.soundManager.playSound('boss_wave');
+    }
+    
+    // Hide the boss wave message after a longer delay (boss waves are special)
+    setTimeout(() => {
+      bossWaveElement.classList.remove('show');
+      setTimeout(() => {
+        bossWaveElement.style.display = 'none';
+      }, 1000); // Animation duration
+    }, 5000); // Display duration
+  }
+
+  /**
+   * Show game completion screen with statistics
+   * @param {object} waveStats - Statistics for all completed waves
+   */
+  showGameComplete(waveStats) {
+    // Create the game complete overlay if it doesn't exist
+    let gameCompleteElement = document.getElementById('game-complete');
+    
+    if (!gameCompleteElement) {
+      gameCompleteElement = document.createElement('div');
+      gameCompleteElement.id = 'game-complete';
+      document.body.appendChild(gameCompleteElement);
+      
+      // Add styling for game complete screen
+      const style = document.createElement('style');
+      style.textContent = `
+        #game-complete {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.8);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          z-index: 2000;
+          font-family: 'Arial', sans-serif;
+          color: #ffffff;
+          opacity: 0;
+          transition: opacity 1s;
+        }
+        
+        #game-complete.show {
+          opacity: 1;
+        }
+        
+        #game-complete h1 {
+          font-size: 64px;
+          color: #ffcc00;
+          text-shadow: 0 0 10px #ff9900;
+          margin-bottom: 30px;
+        }
+        
+        #game-complete h2 {
+          font-size: 36px;
+          color: #ffffff;
+          margin-bottom: 20px;
+        }
+        
+        #game-complete .stats {
+          margin-top: 40px;
+          background-color: rgba(0, 0, 0, 0.5);
+          padding: 20px;
+          border-radius: 10px;
+          width: 80%;
+          max-width: 800px;
+        }
+        
+        #game-complete .stats-title {
+          font-size: 28px;
+          margin-bottom: 15px;
+          color: #ffcc00;
+        }
+        
+        #game-complete .stat-item {
+          display: flex;
+          justify-content: space-between;
+          margin-bottom: 10px;
+          font-size: 18px;
+        }
+        
+        #game-complete .button {
+          margin-top: 40px;
+          padding: 15px 30px;
+          background-color: #ff9900;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          font-size: 24px;
+          cursor: pointer;
+          transition: background-color 0.3s;
+        }
+        
+        #game-complete .button:hover {
+          background-color: #ffcc00;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    
+    // Calculate total stats
+    let totalZombiesKilled = 0;
+    let totalZombiesSpawned = 0;
+    let totalTimePlayed = 0;
+    
+    Object.values(waveStats).forEach(waveStat => {
+      totalZombiesKilled += waveStat.zombiesKilled || 0;
+      totalZombiesSpawned += waveStat.zombiesSpawned || 0;
+      totalTimePlayed += waveStat.timeTaken || 0;
+    });
+    
+    // Format time played
+    const formatTime = (seconds) => {
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = Math.floor(seconds % 60);
+      return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    };
+    
+    // Get player score
+    const playerScore = this.game.player ? this.game.player.score : 0;
+    
+    // Set the game complete content
+    gameCompleteElement.innerHTML = `
+      <h1>VICTORY!</h1>
+      <h2>All Waves Completed</h2>
+      
+      <div class="stats">
+        <div class="stats-title">Final Statistics</div>
+        
+        <div class="stat-item">
+          <span>Total Score:</span>
+          <span>${playerScore}</span>
+        </div>
+        
+        <div class="stat-item">
+          <span>Zombies Killed:</span>
+          <span>${totalZombiesKilled} / ${totalZombiesSpawned}</span>
+        </div>
+        
+        <div class="stat-item">
+          <span>Accuracy:</span>
+          <span>${Math.round((totalZombiesKilled / totalZombiesSpawned) * 100)}%</span>
+        </div>
+        
+        <div class="stat-item">
+          <span>Total Time Played:</span>
+          <span>${formatTime(totalTimePlayed)}</span>
+        </div>
+        
+        <div class="stat-item">
+          <span>Waves Completed:</span>
+          <span>${Object.keys(waveStats).length}</span>
+        </div>
+      </div>
+      
+      <button class="button" id="restart-game">Play Again</button>
+    `;
+    
+    // Add click handler for restart button
+    const restartButton = document.getElementById('restart-game');
+    if (restartButton) {
+      restartButton.addEventListener('click', () => {
+        // Hide the game complete screen
+        gameCompleteElement.classList.remove('show');
+        
+        // Reset the game
+        setTimeout(() => {
+          gameCompleteElement.style.display = 'none';
+          
+          // Restart the game
+          if (this.game.restart) {
+            this.game.restart();
+          }
+        }, 1000);
+      });
+    }
+    
+    // Show the game complete screen
+    gameCompleteElement.style.display = 'flex';
+    gameCompleteElement.classList.add('show');
+    
+    // Play victory sound if available
+    if (this.game.soundManager) {
+      this.game.soundManager.playSound('victory');
+    }
   }
 
   showCrosshair(show) {
