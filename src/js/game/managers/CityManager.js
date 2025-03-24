@@ -24,9 +24,20 @@ export class CityManager {
     this.atmosphericEffects = new AtmosphericEffects(this.game);
     this.atmosphericEffects.init();
 
-    // Create city
-    this.city = new City(this.game, this.buildingGenerator, this.texturingSystem);
-    await this.city.init();
+    // Create city with the correct configuration parameters
+    this.city = new City(this.game, {
+      citySize: {
+        width: 100,
+        height: 100
+      },
+      buildings: {
+        maxHeight: 20,
+        minHeight: 5
+      }
+    });
+    
+    // Initialize the city by generating it
+    this.generateCity();
     
     return this;
   }
@@ -37,8 +48,17 @@ export class CityManager {
       return;
     }
     
-    // Generate city with the specified parameters
-    this.city.generate(citySize, difficulty);
+    // Generate city using the updated method
+    const cityContainer = this.city.generate();
+    
+    // Add the city container to the game scene if not already added
+    if (this.game.scene && cityContainer) {
+      // Check if the container is already in the scene to avoid duplicates
+      const existingIndex = this.game.scene.children.findIndex(child => child === cityContainer);
+      if (existingIndex === -1) {
+        this.game.scene.add(cityContainer);
+      }
+    }
     
     // Apply atmospheric effects
     this.applyAtmosphericEffects();
@@ -52,7 +72,7 @@ export class CityManager {
       return;
     }
     
-    this.atmosphericEffects.apply(timeOfDay);
+    this.atmosphericEffects.applyTimeOfDayPreset(timeOfDay);
   }
   
   getCity() {

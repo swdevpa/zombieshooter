@@ -54,4 +54,10 @@ I've implemented a comprehensive object pooling system to optimize performance b
    - Added initialization of pools with appropriate initial sizes
    - Created reset functions to ensure objects are properly reinitialized when reused
 
+5. Fixed critical issues with the object pooling implementation:
+   - Added missing zombieSpawn pool initialization in EffectsManager.initObjectPools() method
+   - Added zombieSpawn settings to the effects settings object with proper quality levels
+   - Fixed sound management in SoundManager.playSfx() to handle non-prefixed sound names correctly
+   - Resolved "Cannot read properties of undefined (reading 'get')" errors during zombie spawning
+
 The pooling system significantly reduces garbage collection pressure by reusing objects instead of continuously creating and destroying them. This leads to smoother gameplay especially during intense combat with many zombies and effects on screen. 

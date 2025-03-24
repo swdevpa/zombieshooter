@@ -1,5 +1,6 @@
 import { ObjectPool } from '../../utils/ObjectPool.js';
 import { Zombie } from './Zombie.js';
+import * as THREE from 'three';
 
 /**
  * ZombiePool manages a pool of zombie entities to optimize memory usage and performance
@@ -16,6 +17,9 @@ export class ZombiePool {
     this.game = game;
     this.assetLoader = assetLoader;
     
+    // Track all zombies, including active and inactive ones
+    this.zombies = [];
+    
     // Create object pool for zombies
     this.pool = new ObjectPool(
       // Factory function to create new zombie
@@ -25,9 +29,6 @@ export class ZombiePool {
       // Initial size
       initialSize
     );
-    
-    // Track all zombies, including active and inactive ones
-    this.zombies = [];
   }
   
   /**
@@ -40,8 +41,14 @@ export class ZombiePool {
     // Get a zombie from the pool
     const zombie = this.pool.get();
     
+    // If zombie is undefined, the pool couldn't create a new zombie
+    if (!zombie) {
+      console.error('Failed to get zombie from pool');
+      return null;
+    }
+    
     // Initialize zombie at the given position with options
-    zombie.initialize(position, options);
+    this.initializeZombie(zombie, position, options);
     
     // Add to scene if needed
     if (!zombie.container.parent && this.game.scene) {
@@ -76,7 +83,7 @@ export class ZombiePool {
   createZombie() {
     // Create a zombie that's not yet initialized
     // Using dummy position that will be overridden when the zombie is activated
-    const dummyPosition = { x: 0, y: 0, z: 0 };
+    const dummyPosition = new THREE.Vector3(0, 0, 0);
     
     // Create zombie without adding to scene yet
     const zombie = new Zombie(this.game, this.assetLoader, dummyPosition, {
@@ -130,8 +137,13 @@ export class ZombiePool {
    * @private
    */
   initializeZombie(zombie, position, options = {}) {
+    // Ensure position is a Vector3
+    const pos = position instanceof THREE.Vector3 
+      ? position 
+      : new THREE.Vector3(position.x || 0, position.y || 0, position.z || 0);
+    
     // Reset position to spawn point
-    zombie.container.position.copy(position);
+    zombie.container.position.copy(pos);
     
     // Set zombie type
     zombie.type = options.type || 'standard';

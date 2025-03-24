@@ -67,7 +67,30 @@ export class SoundManager {
     // Load all sounds
     this.loadSounds();
     
+    // Setup audio context resuming on user interaction
+    this.setupAudioContextResume();
+    
     console.log('SoundManager initialized');
+    
+    return this;
+  }
+  
+  setupAudioContextResume() {
+    // Add click event listener to resume audio context
+    const resumeAudioContext = () => {
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        this.audioContext.resume().then(() => {
+          console.log('AudioContext resumed successfully');
+        }).catch(err => {
+          console.warn('Could not resume AudioContext:', err);
+        });
+      }
+    };
+    
+    // Add event listeners to various user interactions
+    ['click', 'touchstart', 'keydown'].forEach(eventType => {
+      document.body.addEventListener(eventType, resumeAudioContext, { once: true });
+    });
   }
   
   initSoundPools() {
@@ -195,11 +218,43 @@ export class SoundManager {
     }
   }
   
-  loadSounds() {
-    // Register all sounds with the asset loader
+  async loadSounds() {
+    // For now, we're using placeholder sounds
+    // In a real implementation, we would load actual sound files
     this.registerSoundCatalog();
-    
     console.log('Registered sounds with AssetLoader');
+    
+    // Ensure critical sounds have fallbacks for testing
+    this.createCriticalSoundPlaceholders();
+  }
+  
+  /**
+   * Create placeholders for critical sounds even if they don't exist
+   */
+  createCriticalSoundPlaceholders() {
+    // Ensure critical music tracks have placeholders
+    const criticalMusic = ['music_menu', 'music_gameplay', 'music_intense'];
+    criticalMusic.forEach(id => {
+      if (!this.sounds.music[id]) {
+        this.createPlaceholderSound(id, 'music');
+      }
+    });
+    
+    // Ensure critical ambient sounds have placeholders
+    const criticalAmbient = ['ambient_city', 'ambient_wind'];
+    criticalAmbient.forEach(id => {
+      if (!this.sounds.ambient[id]) {
+        this.createPlaceholderSound(id, 'ambient');
+      }
+    });
+    
+    // Ensure critical UI sounds have placeholders
+    const criticalUI = ['ui_button_hover', 'ui_button_click', 'ui_pause', 'ui_countdown'];
+    criticalUI.forEach(id => {
+      if (!this.sounds.ui[id]) {
+        this.createPlaceholderSound(id, 'ui');
+      }
+    });
   }
   
   registerSoundCatalog() {
@@ -374,24 +429,29 @@ export class SoundManager {
   playMusic(key, options = {}) {
     if (!this.config.enabled) return null;
     
+    // Try to resume AudioContext if suspended
+    this.ensureAudioContext();
+    
+    // Set default options
     const musicOptions = {
-      volume: this.config.musicVolume * this.config.masterVolume,
+      volume: this.getMusicVolume(),
       loop: true,
-      fadeIn: true,
+      fadeIn: false,
       fadeTime: 2.0,
       ...options
     };
     
     // Stop current music if playing
-    if (this.currentMusic && this.currentMusic.isPlaying) {
-      this.currentMusic.stop();
+    if (this.currentMusic) {
+      this.fadeOut(this.currentMusic, 1.0);
+      this.activeSounds.delete(this.currentMusic);
     }
     
-    // Create new audio object
+    // Create audio object
     const music = new THREE.Audio(this.listener);
     
-    // Get buffer from our loaded sounds
-    const buffer = this.sounds.music[key];
+    // Get audio buffer for the key
+    const buffer = this.getSoundBuffer(key);
     
     if (buffer) {
       music.setBuffer(buffer);
@@ -401,7 +461,13 @@ export class SoundManager {
       
       // Fade in if needed
       if (musicOptions.fadeIn) {
-        this.fadeIn(music, musicOptions.volume, musicOptions.fadeTime);
+        try {
+          this.fadeIn(music, musicOptions.volume, musicOptions.fadeTime);
+        } catch (error) {
+          console.error("Error during music fade-in:", error);
+          // Fallback to direct volume setting
+          music.setVolume(musicOptions.volume);
+        }
       } else {
         music.setVolume(musicOptions.volume);
       }
@@ -420,63 +486,52 @@ export class SoundManager {
   playSfx(key, options = {}) {
     if (!this.config.enabled) return null;
     
-    const category = options.category || 'sfx';
+    // Try to resume AudioContext if suspended
+    this.ensureAudioContext();
     
-    // Set default volume based on category
-    let defaultVolume;
-    switch (category) {
-      case 'weapon':
-        defaultVolume = this.config.weaponVolume;
-        break;
-      case 'zombie':
-        defaultVolume = this.config.zombieVolume;
-        break;
-      case 'player':
-        defaultVolume = this.config.playerVolume;
-        break;
-      case 'ui':
-        defaultVolume = this.config.uiVolume;
-        break;
-      default:
-        defaultVolume = this.config.sfxVolume;
-    }
-    
+    // Set default options
     const sfxOptions = {
-      volume: defaultVolume * this.config.masterVolume,
-      loop: false,
+      volume: this.config.sfxVolume,
       spatial: false,
       position: null,
       pooled: false,
+      loop: false,
       ...options
     };
     
-    let sound;
+    // Determine which category to use
+    const categoryToUse = options.category || 'sfx';
     
-    // Check if we should use pooling
-    if (sfxOptions.pooled && this.soundPools[key]) {
-      sound = this.getFromPool(key);
-    } else {
-      sound = sfxOptions.spatial
-        ? new THREE.PositionalAudio(this.listener)
-        : new THREE.Audio(this.listener);
+    // Check if we need to prefix the key with the category
+    let keyToUse = key;
+    if (!key.startsWith(categoryToUse + '_')) {
+      keyToUse = `${categoryToUse}_${key}`;
     }
     
-    if (!sound) {
-      console.warn(`Failed to create sound: ${key}`);
-      return null;
-    }
-    
-    // Get buffer from our loaded sounds
-    const categoryToUse = category === 'sfx' ? 'sfx' : category;
-    const buffer = this.sounds[categoryToUse][key];
+    // Get the sound buffer
+    const buffer = this.sounds[categoryToUse] ? this.sounds[categoryToUse][keyToUse] : null;
     
     if (buffer) {
-      sound.setBuffer(buffer);
-      sound.setLoop(sfxOptions.loop);
-      sound.setVolume(sfxOptions.volume);
+      let sound;
       
-      // Set spatial audio properties if needed
-      if (sfxOptions.spatial && sfxOptions.position) {
+      if (sfxOptions.pooled) {
+        // Get from object pool
+        sound = this.getFromPool(keyToUse);
+      } else {
+        // Create new instance
+        if (sfxOptions.spatial && this.game.audioListener) {
+          sound = new THREE.PositionalAudio(this.game.audioListener);
+        } else {
+          sound = new THREE.Audio(this.game.audioListener);
+        }
+        
+        sound.setBuffer(buffer);
+        sound.setVolume(sfxOptions.volume);
+        sound.setLoop(sfxOptions.loop);
+      }
+      
+      // Set position if spatial audio
+      if (sound instanceof THREE.PositionalAudio && sfxOptions.position) {
         sound.position.copy(sfxOptions.position);
         
         // Set additional positional audio properties
@@ -505,6 +560,10 @@ export class SoundManager {
   playAmbient(key, options = {}) {
     if (!this.config.enabled) return null;
     
+    // Try to resume AudioContext if suspended
+    this.ensureAudioContext();
+    
+    // Set default options
     const ambientOptions = {
       volume: this.config.ambientVolume * this.config.masterVolume,
       loop: true,
@@ -514,15 +573,16 @@ export class SoundManager {
     };
     
     // Stop current ambient if playing
-    if (this.currentAmbient && this.currentAmbient.isPlaying) {
-      this.currentAmbient.stop();
+    if (this.currentAmbient) {
+      this.fadeOut(this.currentAmbient, 2.0);
+      this.activeSounds.delete(this.currentAmbient);
     }
     
     // Create new audio object
     const ambient = new THREE.Audio(this.listener);
     
     // Get buffer from our loaded sounds
-    const buffer = this.sounds.ambient[key];
+    const buffer = this.getSoundBuffer(key);
     
     if (buffer) {
       ambient.setBuffer(buffer);
@@ -532,7 +592,13 @@ export class SoundManager {
       
       // Fade in if needed
       if (ambientOptions.fadeIn) {
-        this.fadeIn(ambient, ambientOptions.volume, ambientOptions.fadeTime);
+        try {
+          this.fadeIn(ambient, ambientOptions.volume, ambientOptions.fadeTime);
+        } catch (error) {
+          console.error("Error during ambient fade-in:", error);
+          // Fallback to direct volume setting
+          ambient.setVolume(ambientOptions.volume);
+        }
       } else {
         ambient.setVolume(ambientOptions.volume);
       }
@@ -548,27 +614,97 @@ export class SoundManager {
     }
   }
   
-  fadeIn(sound, targetVolume, fadeTime) {
+  fadeIn(sound, targetVolume, fadeTime = 1.0) {
     if (!sound) return;
     
-    const startTime = this.audioContext.currentTime;
-    const endTime = startTime + fadeTime;
-    
-    // Use exponential ramp for more natural volume change
-    sound.gain.setValueAtTime(0.01, startTime); // Start from a small value, not 0
-    sound.gain.exponentialRampToValueAtTime(targetVolume, endTime);
+    try {
+      // Check if sound has the gain property (it might be a placeholder)
+      if (!sound.gain) {
+        // For THREE.Audio objects, we need to access gain through getGain()
+        if (typeof sound.getGain === 'function') {
+          const gainNode = sound.getGain();
+          if (gainNode && typeof gainNode.gain.setValueAtTime === 'function') {
+            const startTime = this.audioContext.currentTime;
+            const endTime = startTime + fadeTime;
+            
+            // Use exponential ramp for more natural volume change
+            gainNode.gain.setValueAtTime(0.01, startTime); // Start from a small value, not 0
+            gainNode.gain.exponentialRampToValueAtTime(targetVolume, endTime);
+          } else {
+            // Fallback if gain functions aren't available
+            if (typeof sound.setVolume === 'function') {
+              sound.setVolume(targetVolume);
+            }
+          }
+        } else {
+          // For placeholder sounds, just set volume directly
+          if (typeof sound.setVolume === 'function') {
+            sound.setVolume(targetVolume);
+          }
+        }
+        return;
+      }
+      
+      const startTime = this.audioContext.currentTime;
+      const endTime = startTime + fadeTime;
+      
+      // Check if the gain methods exist
+      if (sound.gain && typeof sound.gain.setValueAtTime === 'function' && 
+          typeof sound.gain.exponentialRampToValueAtTime === 'function') {
+        // Use exponential ramp for more natural volume change
+        sound.gain.setValueAtTime(0.01, startTime); // Start from a small value, not 0
+        sound.gain.exponentialRampToValueAtTime(targetVolume, endTime);
+      } else {
+        // Fallback to direct volume setting
+        if (typeof sound.setVolume === 'function') {
+          sound.setVolume(targetVolume);
+        }
+      }
+    } catch (error) {
+      console.warn("Error during fade-in, setting volume directly:", error);
+      // Fallback to direct volume setting
+      if (typeof sound.setVolume === 'function') {
+        sound.setVolume(targetVolume);
+      }
+    }
   }
   
   fadeOut(sound, fadeTime) {
     if (!sound || !sound.isPlaying) return;
     
+    // Check if sound has the gain property (it might be a placeholder)
+    if (!sound.gain) {
+      // For THREE.Audio objects, we need to access gain through getGain()
+      if (sound.getGain) {
+        const gainNode = sound.getGain();
+        const startTime = this.audioContext.currentTime;
+        const endTime = startTime + fadeTime;
+        
+        // Current volume
+        const currentVolume = sound.getVolume();
+        
+        // Use exponential ramp for more natural volume change
+        gainNode.gain.setValueAtTime(Math.max(currentVolume, 0.01), startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, endTime);
+        
+        // Schedule stop after fade
+        setTimeout(() => {
+          if (sound.isPlaying) sound.stop();
+        }, fadeTime * 1000);
+      } else {
+        // For placeholder sounds, just stop directly
+        sound.stop();
+      }
+      return;
+    }
+    
     const startTime = this.audioContext.currentTime;
     const endTime = startTime + fadeTime;
     
     sound.gain.setValueAtTime(sound.gain.value, startTime);
-    sound.gain.linearRampToValueAtTime(0.001, endTime);
+    sound.gain.exponentialRampToValueAtTime(0.001, endTime);
     
-    // Stop the sound after fade out
+    // Schedule stop after fade completes
     setTimeout(() => {
       if (sound.isPlaying) {
         sound.stop();
@@ -610,5 +746,61 @@ export class SoundManager {
         sound.play();
       }
     }
+  }
+  
+  // Add this new method
+  ensureAudioContext() {
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      console.log('Attempting to resume AudioContext...');
+      this.audioContext.resume().catch(err => {
+        console.warn('Could not resume AudioContext:', err);
+      });
+    }
+  }
+  
+  /**
+   * Get sound buffer for a specific key
+   * @param {string} key - Sound identifier
+   * @returns {AudioBuffer|null} Sound buffer or null if not found
+   */
+  getSoundBuffer(key) {
+    // Try to find in different sound categories
+    if (this.sounds.music && this.sounds.music[key]) {
+      return this.sounds.music[key];
+    }
+    
+    if (this.sounds.sfx && this.sounds.sfx[key]) {
+      return this.sounds.sfx[key];
+    }
+    
+    if (this.sounds.ambient && this.sounds.ambient[key]) {
+      return this.sounds.ambient[key];
+    }
+    
+    if (this.sounds.zombie && this.sounds.zombie[key]) {
+      return this.sounds.zombie[key];
+    }
+    
+    if (this.sounds.ui && this.sounds.ui[key]) {
+      return this.sounds.ui[key];
+    }
+    
+    if (this.sounds.player && this.sounds.player[key]) {
+      return this.sounds.player[key];
+    }
+    
+    if (this.sounds.weapon && this.sounds.weapon[key]) {
+      return this.sounds.weapon[key];
+    }
+    
+    return null;
+  }
+
+  /**
+   * Get the effective music volume considering master volume
+   * @returns {number} Effective music volume
+   */
+  getMusicVolume() {
+    return this.config.musicVolume * this.config.masterVolume;
   }
 } 

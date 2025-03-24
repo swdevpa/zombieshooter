@@ -6,10 +6,12 @@ export class ObjectPool {
   /**
    * Create a new object pool
    * @param {Function} createFn - Factory function to create new objects
+   * @param {Function} resetFn - Function to reset objects before reuse
    * @param {number} initialSize - Initial pool size
    */
-  constructor(createFn, initialSize = 10) {
+  constructor(createFn, resetFn = null, initialSize = 10) {
     this.createFn = createFn;
+    this.resetFn = resetFn;
     this.pool = [];
     this.activeObjects = new Set();
     
@@ -65,8 +67,11 @@ export class ObjectPool {
       obj.isActive = false;
       this.activeObjects.delete(obj);
       
-      // If the object has a reset method, call it
-      if (typeof obj.reset === 'function') {
+      // Call the reset function if provided
+      if (this.resetFn) {
+        this.resetFn(obj);
+      } else if (typeof obj.reset === 'function') {
+        // Fallback to object's reset method
         obj.reset();
       }
     }
@@ -79,8 +84,11 @@ export class ObjectPool {
     this.activeObjects.forEach(obj => {
       obj.isActive = false;
       
-      // If the object has a reset method, call it
-      if (typeof obj.reset === 'function') {
+      // Call the reset function if provided
+      if (this.resetFn) {
+        this.resetFn(obj);
+      } else if (typeof obj.reset === 'function') {
+        // Fallback to object's reset method
         obj.reset();
       }
     });

@@ -220,7 +220,7 @@
           "id": "occlusion-culling",
           "title": "Add occlusion culling for city environments",
           "status": "done",
-          "notes": "Implemented a comprehensive occlusion culling system that increases performance by only rendering objects visible to the player. Enhanced the CullingManager with ray-casting based occlusion detection for buildings hiding zombies and other objects. Added multi-point testing for accurate occlusion determination and optimized updates with throttling. Integrated with quality settings for hardware-appropriate performance and created a debug visualization system for testing."
+          "notes": "Implemented a comprehensive occlusion culling system that increases performance by only rendering objects visible to the player. Enhanced the CullingManager with ray-casting based occlusion detection for buildings hiding zombies and other objects. Added multi-point testing for accurate occlusion determination and optimized updates with throttling. Integrated with quality settings for hardware-appropriate performance and created a debug visualization system for testing. Fixed critical bugs with camera matrices validation to prevent 'Cannot read properties of undefined (reading 'elements')' errors when matrices aren't properly initialized."
         },
         {
           "id": "asset-optimization",
@@ -244,7 +244,7 @@
           "id": "object-pooling",
           "title": "Implement object pooling for zombies and effects",
           "status": "done",
-          "notes": "Implemented comprehensive object pooling system with a centralized EffectsManager for all visual effects (blood splatter, explosions, muzzle flash, spark impacts, zombie spawn effects) and a ZombiePool for zombie entities. Added proper resource management with initialization, reuse and disposal of pooled objects to reduce garbage collection and improve performance. Fixed ObjectPool initialization issues to support both function-style and object-style configuration patterns. Fixed critical building generation errors by adding missing createBalconies method and implementing safe geometry parameter handling in damage application methods."
+          "notes": "Implemented comprehensive object pooling system with a centralized EffectsManager for all visual effects (blood splatter, explosions, muzzle flash, spark impacts, zombie spawn effects) and a ZombiePool for zombie entities. Added proper resource management with initialization, reuse and disposal of pooled objects to reduce garbage collection and improve performance. Fixed ObjectPool initialization issues to support both function-style and object-style configuration patterns. Fixed critical bugs including missing zombieSpawn pool initialization, missing settings, and sound management issues causing \"Cannot read properties of undefined (reading 'get')\" errors during zombie spawning."
         }
       ]
     },
@@ -307,6 +307,7 @@
     "Implemented a comprehensive GameStateManager system with proper state transitions between menu, playing, paused, game over, and victory states. Created a main menu UI with difficulty selection, added pause menu functionality, and integrated with UI and input systems.",
     "Implemented a comprehensive damage feedback system with multiple visual elements including screen flash effects, vignette darkening, directional indicators showing damage sources, and screen shake effects proportional to damage amount. The system provides intuitive visual cues that enhance gameplay feedback and player awareness.",
     "Implemented a comprehensive wave progression system with increasing difficulty, special boss waves, dynamic wave modifiers, zombie type distribution, and difficulty settings. Added explosive zombies, regenerating zombies, and other special effects for varied gameplay.",
-    "Implemented a comprehensive zombie AI pathfinding system with NavigationGrid for city mapping, type-specific behaviors for zombies, flanking for runners, obstacle breaking for brutes, advanced collision handling, debug visualization, and performance optimizations."
+    "Implemented a comprehensive zombie AI pathfinding system with NavigationGrid for city mapping, type-specific behaviors for zombies, flanking for runners, obstacle breaking for brutes, advanced collision handling, debug visualization, and performance optimizations.",
+    "Fixed UI initialization error by adding missing init() method to UI class that returns a Promise. Resolved TypeError 'this.ui.init is not a function' during game initialization. Added Promise.resolve compatibility to ensure proper async/await functionality."
   ]
 } 

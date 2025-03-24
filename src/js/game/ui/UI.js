@@ -1,6 +1,7 @@
 export class UI {
-  constructor(game) {
+  constructor(game, gameContainer) {
     this.game = game;
+    this.gameContainer = gameContainer || document.getElementById('game-container');
 
     // UI elements
     this.scoreElement = document.getElementById('score');
@@ -72,6 +73,17 @@ export class UI {
       this.createScorePopupContainer();
     }
   }
+  
+  /**
+   * Initialize UI components
+   * @returns {Promise<UI>} Promise that resolves with this UI instance
+   */
+  init() {
+    // Additional initialization if needed
+    
+    // Return a resolved promise with this instance for async compatibility
+    return Promise.resolve(this);
+  }
 
   // Update-Methode, die im Game-Loop aufgerufen wird
   update(deltaTime) {
@@ -129,7 +141,11 @@ export class UI {
     const notification = document.createElement('div');
     notification.className = 'new-high-score-notification';
     notification.textContent = 'NEW HIGH SCORE!';
-    document.body.appendChild(notification);
+    notification.style.transform = 'translate(-50%, 0)';
+    notification.innerHTML = `<div class="icon-container">${highScoreIcon}</div><span>NEW HIGH SCORE: ${score.toLocaleString()}</span>`;
+    
+    // Add to DOM
+    this.gameContainer.appendChild(notification);
     
     // Add notification styles if they don't exist
     let style = document.getElementById('high-score-notification-style');
@@ -260,7 +276,7 @@ export class UI {
       bonusContainer = document.createElement('div');
       bonusContainer.id = 'bonus-message-container';
       bonusContainer.className = 'bonus-message-container';
-      document.body.appendChild(bonusContainer);
+      this.gameContainer.appendChild(bonusContainer);
       
       // Add styles
       const style = document.createElement('style');
@@ -341,7 +357,11 @@ export class UI {
       this.waveElement.id = 'wave';
       this.waveElement.className = 'wave-indicator';
       this.waveElement.textContent = `Wave: ${wave}`;
-      document.body.appendChild(this.waveElement);
+      this.waveElement.style.left = '50%';
+      this.waveElement.style.fontWeight = 'bold';
+      
+      // Add wave element to DOM
+      this.gameContainer.appendChild(this.waveElement);
       
       // Add styles
       const style = document.createElement('style');
@@ -362,12 +382,12 @@ export class UI {
     }
   }
 
-  updateHealth(health) {
-    // Get max health value safely
-    const maxHealth = this.game.player?.maxHealth || this.defaultMaxHealth;
+  updateHealth(health, maxHealth) {
+    // Get max health value safely, either from parameter or from player
+    const maxHealthValue = maxHealth || this.game.player?.maxHealth || this.defaultMaxHealth;
     
     // Health bar percentage
-    const healthPercent = Math.max(0, Math.min(100, (health / maxHealth) * 100));
+    const healthPercent = Math.max(0, Math.min(100, (health / maxHealthValue) * 100));
 
     // Update health bar width
     if (this.healthBar) {
@@ -609,7 +629,7 @@ export class UI {
     if (!waveAnnouncement) {
       waveAnnouncement = document.createElement('div');
       waveAnnouncement.id = 'wave-announcement';
-      document.body.appendChild(waveAnnouncement);
+      this.gameContainer.appendChild(waveAnnouncement);
       
       // Add styles if needed
       const style = document.createElement('style');
@@ -680,7 +700,7 @@ export class UI {
     if (!bossWaveElement) {
       bossWaveElement = document.createElement('div');
       bossWaveElement.id = 'boss-wave-message';
-      document.body.appendChild(bossWaveElement);
+      this.gameContainer.appendChild(bossWaveElement);
       
       // Add special styling for boss waves
       const style = document.createElement('style');
@@ -772,7 +792,7 @@ export class UI {
     if (!gameCompleteElement) {
       gameCompleteElement = document.createElement('div');
       gameCompleteElement.id = 'game-complete';
-      document.body.appendChild(gameCompleteElement);
+      this.gameContainer.appendChild(gameCompleteElement);
       
       // Add styling for game complete screen
       const style = document.createElement('style');
@@ -968,7 +988,7 @@ export class UI {
       this.settingsContainer = document.createElement('div');
       this.settingsContainer.id = 'settings-menu';
       this.settingsContainer.className = 'settings-menu hidden';
-      document.body.appendChild(this.settingsContainer);
+      this.gameContainer.appendChild(this.settingsContainer);
       
       // Create settings content
       const settingsContent = document.createElement('div');
@@ -1121,7 +1141,7 @@ export class UI {
       this.fpsElement = document.createElement('div');
       this.fpsElement.id = 'fps-counter';
       this.fpsElement.textContent = 'FPS: 0';
-      document.body.appendChild(this.fpsElement);
+      this.gameContainer.appendChild(this.fpsElement);
     }
     
     // Add performance settings section
@@ -1337,7 +1357,7 @@ export class UI {
           <button id="settings-btn">Settings</button>
         </div>
       `;
-      document.body.appendChild(this.pauseContainer);
+      this.gameContainer.appendChild(this.pauseContainer);
       
       // Add style
       const style = document.createElement('style');
@@ -1445,7 +1465,7 @@ export class UI {
       this.ammoPickupIndicator = document.createElement('div');
       this.ammoPickupIndicator.id = 'ammo-pickup-indicator';
       this.ammoPickupIndicator.className = 'pickup-indicator';
-      document.body.appendChild(this.ammoPickupIndicator);
+      this.gameContainer.appendChild(this.ammoPickupIndicator);
     }
     
     this.ammoPickupIndicator.textContent = `+${amount} Ammo`;
@@ -1481,7 +1501,14 @@ export class UI {
       this.hitMarkerContainer.style.transform = 'translate(-50%, -50%)';
       this.hitMarkerContainer.style.pointerEvents = 'none';
       this.hitMarkerContainer.style.zIndex = '200';
-      document.body.appendChild(this.hitMarkerContainer);
+      
+      // Make sure gameContainer exists before appending
+      if (this.gameContainer) {
+        this.gameContainer.appendChild(this.hitMarkerContainer);
+      } else {
+        console.warn('Game container not found, cannot append hit marker container');
+        document.body.appendChild(this.hitMarkerContainer);
+      }
     }
     
     // Create hit marker
@@ -1611,7 +1638,7 @@ export class UI {
       this.damageIndicatorContainer.style.pointerEvents = 'none';
       this.damageIndicatorContainer.style.zIndex = '100';
       this.damageIndicatorContainer.style.overflow = 'hidden';
-      document.body.appendChild(this.damageIndicatorContainer);
+      this.gameContainer.appendChild(this.damageIndicatorContainer);
       
       this.damageVignette = document.createElement('div');
       this.damageVignette.id = 'damage-vignette';
@@ -2173,7 +2200,7 @@ export class UI {
       document.head.appendChild(style);
       
       // Append to body
-      document.body.appendChild(mainMenu);
+      this.gameContainer.appendChild(mainMenu);
       
       // Hide main menu initially (will be shown by GameStateManager)
       mainMenu.style.display = 'none';
@@ -2301,7 +2328,7 @@ export class UI {
     this.scorePopupContainer = document.createElement('div');
     this.scorePopupContainer.id = 'score-popup-container';
     this.scorePopupContainer.className = 'score-popup-container';
-    document.body.appendChild(this.scorePopupContainer);
+    this.gameContainer.appendChild(this.scorePopupContainer);
     
     // Add styles for score popups
     const style = document.createElement('style');
@@ -2367,7 +2394,7 @@ export class UI {
       scoreContainer = document.createElement('div');
       scoreContainer.id = 'score-container';
       scoreContainer.className = 'score-container';
-      document.body.appendChild(scoreContainer);
+      this.gameContainer.appendChild(scoreContainer);
       
       // Create score display
       this.scoreElement = document.createElement('div');
@@ -2638,7 +2665,7 @@ export class UI {
       difficultyIndicator.appendChild(text);
       
       // Add to document
-      document.body.appendChild(difficultyIndicator);
+      this.gameContainer.appendChild(difficultyIndicator);
       
       // Fade out after 5 seconds
       setTimeout(() => {

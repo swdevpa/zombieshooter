@@ -76,8 +76,16 @@ export class CullingManager {
   setupBackfaceCulling() {
     // Stelle sicher, dass Backface Culling aktiviert ist
     this.game.scene.traverse((object) => {
-      if (object.isMesh) {
-        object.material.side = THREE.FrontSide;
+      if (object.isMesh && object.material) {
+        if (Array.isArray(object.material)) {
+          // Handle multi-material case
+          object.material.forEach(mat => {
+            if (mat) mat.side = THREE.FrontSide;
+          });
+        } else if (object.material) {
+          // Handle single material case
+          object.material.side = THREE.FrontSide;
+        }
       }
     });
   }
@@ -122,20 +130,42 @@ export class CullingManager {
       this.game.city.container.traverse((child) => {
         // Nur Meshes mit signifikanter Größe als Occluder verwenden
         if (child.isMesh && child.geometry) {
-          child.geometry.computeBoundingBox();
-          const size = new THREE.Vector3();
-          child.geometry.boundingBox.getSize(size);
-          
-          // Wenn das Objekt groß genug ist (z.B. ein Gebäude)
-          if (size.length() > 5) {
-            child.isOccluder = true;
-            this.occluders.push(child);
+          // Check if geometry has valid position attribute before computing bounding box
+          if (child.geometry.attributes && 
+              child.geometry.attributes.position && 
+              child.geometry.attributes.position.array && 
+              child.geometry.attributes.position.array.length > 0 &&
+              !this.hasNaNValues(child.geometry.attributes.position.array)) {
+            
+            child.geometry.computeBoundingBox();
+            const size = new THREE.Vector3();
+            child.geometry.boundingBox.getSize(size);
+            
+            // Wenn das Objekt groß genug ist (z.B. ein Gebäude)
+            if (size.length() > 5) {
+              child.isOccluder = true;
+              this.occluders.push(child);
+            }
           }
         }
       });
     }
     
     console.log(`Identified ${this.occluders.length} occluders in the scene`);
+  }
+
+  /**
+   * Check if an array contains NaN values
+   * @param {Array} array - The array to check
+   * @returns {boolean} True if the array contains NaN values
+   */
+  hasNaNValues(array) {
+    for (let i = 0; i < array.length; i++) {
+      if (isNaN(array[i])) {
+        return true;
+      }
+    }
+    return false;
   }
 
   setupDebugVisualization() {
@@ -194,6 +224,11 @@ export class CullingManager {
     // Skip if culling is disabled
     if (!this.config.enabled) return;
 
+    // Check if camera is properly initialized
+    if (!camera || !camera.projectionMatrix || !camera.matrixWorldInverse) {
+      return; // Skip update if camera is not ready
+    }
+
     // Get player position
     const playerPosition = this.game.player
       ? this.game.player.container.position.clone()
@@ -235,6 +270,12 @@ export class CullingManager {
   calculateFrustum(camera) {
     // Create a new frustum
     const frustum = new THREE.Frustum();
+
+    // Check if camera is valid and has all required matrices
+    if (!camera || !camera.projectionMatrix || !camera.matrixWorldInverse) {
+      console.warn('CullingManager: Camera or camera matrices not initialized properly');
+      return frustum; // Return empty frustum to avoid errors
+    }
 
     // Get the camera's view frustum
     const projScreenMatrix = new THREE.Matrix4();

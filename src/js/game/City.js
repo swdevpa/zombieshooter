@@ -46,14 +46,6 @@ export class City {
 
     // Add to container
     this.container.add(ground);
-
-    // Add a helper for debugging - red sphere at origin
-    const originHelper = new THREE.Mesh(
-      new THREE.SphereGeometry(3, 16, 16),
-      new THREE.MeshBasicMaterial({ color: 0xff0000 })
-    );
-    originHelper.position.set(0, 5, 0);
-    this.container.add(originHelper);
   }
 
   createStreets() {
@@ -147,5 +139,40 @@ export class City {
     });
 
     this.container.add(buildingsGroup);
+  }
+
+  generate() {
+    console.log('Generating city...');
+
+    // Clear any existing elements
+    while (this.container.children.length > 0) {
+      this.container.remove(this.container.children[0]);
+    }
+
+    // Initialize city grid
+    this.initializeCityGrid();
+
+    // Create ground
+    this.createGround();
+
+    // Create streets
+    this.createStreets();
+
+    // Create buildings
+    this.createBuildings();
+    
+    // Generate city components (sidewalks, props, debris, vehicles)
+    this.generateCityComponents();
+    
+    // Generate apocalyptic assets (barricades, gore, wreckage, etc.)
+    this.generateApocalypticAssets();
+    
+    // Generate level boundaries
+    this.generateLevelBoundaries();
+
+    // For debugging, don't center the city - keep it at origin
+    console.log('City generation complete');
+
+    return this.container;
   }
 }

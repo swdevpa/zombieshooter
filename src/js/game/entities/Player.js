@@ -447,7 +447,7 @@ export class Player {
     
     // Update the UI
     if (this.game.uiManager) {
-      this.game.uiManager.updateHealthBar(this.health / this.maxHealth);
+      this.game.uiManager.updateHealth(this.health, this.maxHealth);
     }
     
     // Play damage sound
@@ -538,7 +538,7 @@ export class Player {
 
     // Update UI
     if (this.game.uiManager) {
-      this.game.uiManager.updateHealthBar(this.health / this.maxHealth);
+      this.game.uiManager.updateHealth(this.health, this.maxHealth);
     }
   }
 
@@ -597,7 +597,7 @@ export class Player {
     
     // Update the UI
     if (this.game.uiManager) {
-      this.game.uiManager.updateHealthBar(this.health / this.maxHealth);
+      this.game.uiManager.updateHealth(this.health, this.maxHealth);
     }
     
     // Play heal sound

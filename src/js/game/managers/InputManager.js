@@ -249,6 +249,13 @@ export class InputManager {
 
   // Called by the game loop to update inputs
   update(deltaTime) {
-    // Nothing to do here for now, since inputs are event-driven
+    // Any continuous input processing can go here
+  }
+  
+  // Initialize the input manager
+  init() {
+    console.log("InputManager initialized");
+    // Any initialization code can go here
+    return this;
   }
 }

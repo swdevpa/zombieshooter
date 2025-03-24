@@ -627,15 +627,26 @@ export class ZombieManager {
    */
   checkWaveComplete() {
     // Wait for all zombies to be killed
-    const zombieCheckInterval = setInterval(() => {
-      if (this.zombies.filter(zombie => zombie.isAlive).length === 0) {
-        // Wave is complete, stop checking
-        clearInterval(zombieCheckInterval);
-        
-        // Trigger wave complete
-        this.onWaveComplete();
+    if (this.zombies.filter(zombie => zombie.isAlive).length === 0) {
+      // Wave is complete
+      console.log(`Wave ${this.currentWave} complete`);
+      
+      // Award wave completion bonus
+      this.awardWaveCompletionBonus();
+      
+      // Record wave stats
+      this.recordWaveStats();
+      
+      // Check if all waves are complete
+      if (this.currentWave >= this.waveCount) {
+        console.log('All waves complete!');
+        this.onGameComplete();
+        return;
       }
-    }, 1000);
+      
+      // Prepare for the next wave
+      this.prepareNextWave();
+    }
   }
 
   spawnZombies() {
@@ -665,7 +676,7 @@ export class ZombieManager {
 
     // Create options for this zombie
     const options = {
-      position: spawnPoint.clone(),
+      position: spawnPoint, // Already a THREE.Vector3 from getRandomSpawnPoint
       health: 100, // Base health
       damage: 10,  // Base damage
       speed: 1.0,  // Base speed
@@ -945,30 +956,21 @@ export class ZombieManager {
    * Prepare for the next wave with a delay
    */
   prepareNextWave() {
-    // Set transitioning flag to prevent multiple calls
-    this.isWaveTransitioning = true;
+    // Start wave delay timer
+    const nextWave = this.currentWave + 1;
+    console.log(`Preparing for wave ${nextWave}`);
     
-    // Show wave complete message if UI manager exists
-    if (this.game.uiManager) {
-      this.game.uiManager.showWaveComplete(this.currentWave);
+    // Show wave complete message
+    if (this.game.ui) {
+      this.game.ui.showWaveCompleteMessage(this.currentWave);
     }
     
-    // Determine delay based on wave type
-    let delay = 5000; // 5 seconds between normal waves
-    
-    // Longer delay after boss waves
-    if (this.isBossWave(this.currentWave)) {
-      delay = 10000; // 10 seconds after boss waves
-    }
-    
-    // Wait before starting next wave
+    // Pause between waves
+    const waveDelay = 5000; // 5 seconds
     setTimeout(() => {
       // Start next wave
-      this.startNewWave(this.currentWave + 1);
-      
-      // Reset transitioning flag
-      this.isWaveTransitioning = false;
-    }, delay);
+      this.startNewWave(nextWave);
+    }, waveDelay);
   }
 
   /**

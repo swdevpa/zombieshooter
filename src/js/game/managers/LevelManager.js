@@ -145,4 +145,13 @@ export class LevelManager {
   restartCurrentLevel() {
     return this.loadLevel(this.currentLevel);
   }
+
+  /**
+   * Resets the current level by reloading it
+   * @returns {Promise<boolean>} Success status of the level loading
+   */
+  resetLevel() {
+    console.log('Resetting current level...');
+    return this.loadLevel(this.currentLevel);
+  }
 }

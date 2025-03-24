@@ -86,6 +86,15 @@ export class TexturingSystem {
   }
   
   /**
+   * Initializes the texturing system
+   * @returns {Promise<TexturingSystem>} The initialized TexturingSystem instance
+   */
+  async init() {
+    await this.initializeTextures();
+    return this;
+  }
+  
+  /**
    * Initializes all building and city textures
    */
   async initializeTextures() {
@@ -557,15 +566,16 @@ export class TexturingSystem {
    * @returns {number} - Three.js compatible color value
    */
   getRandomColorFromPalette(buildingType) {
-    if (!this.colorPalettes[buildingType]) {
-      console.warn(`No color palette found for building type: ${buildingType}, using residential`);
-      buildingType = 'residential';
-    }
-    
-    const colorIndex = Math.floor(Math.random() * this.colorPalettes[buildingType].length);
-    const hexColor = this.colorPalettes[buildingType][colorIndex];
-    
-    // Convert hex color string to THREE.js color number
-    return new THREE.Color(hexColor).getHex();
+    const palette = this.colorPalettes[buildingType] || this.colorPalettes.residential;
+    return palette[Math.floor(Math.random() * palette.length)];
   }
-} 
+  
+  /**
+   * Updates the texturing system per frame
+   * @param {number} deltaTime - Time since last update in seconds
+   */
+  update(deltaTime) {
+    // No per-frame updates needed currently, but the method must exist
+    // This could be used for texture animations, dynamic effects, etc.
+  }
+}

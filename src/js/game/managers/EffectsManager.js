@@ -54,6 +54,12 @@ export class EffectsManager {
             glass: 0xffffff
           }
         }
+      },
+      zombieSpawn: {
+        particleCount: 20,
+        duration: 1.2,
+        color: 0x55ff55,
+        size: 0.2
       }
     };
     
@@ -80,6 +86,10 @@ export class EffectsManager {
         sparkImpact: new ObjectPool(
           () => this.createSparkImpactObject(),
           20
+        ),
+        zombieSpawn: new ObjectPool(
+          () => this.createZombieSpawnObject(),
+          15
         )
       };
     } catch (error) {
@@ -99,14 +109,17 @@ export class EffectsManager {
       case 'low':
         this.settings.effects.muzzleFlash.particleCount = 4;
         this.settings.effects.impact.particleCount = 6;
+        this.settings.zombieSpawn.particleCount = 10;
         break;
       case 'medium':
         this.settings.effects.muzzleFlash.particleCount = 6;
         this.settings.effects.impact.particleCount = 9;
+        this.settings.zombieSpawn.particleCount = 15;
         break;
       case 'high':
         this.settings.effects.muzzleFlash.particleCount = 8;
         this.settings.effects.impact.particleCount = 12;
+        this.settings.zombieSpawn.particleCount = 20;
         break;
     }
   }

@@ -451,11 +451,14 @@ export class RenderManager {
     // Start frame timing
     this.perfMarkers.frameStart = performance.now();
     
-    // Update render settings based on performance
-    this.updateDynamicResolution(deltaTime);
-    
-    // Sort render queue for optimal performance
-    this.sortRenderQueue();
+    // Skip dynamic resolution updates if game isn't running properly
+    if (this.game.running) {
+      // Update render settings based on performance
+      this.updateDynamicResolution(deltaTime);
+      
+      // Sort render queue for optimal performance
+      this.sortRenderQueue();
+    }
     
     // Mark culling start
     this.perfMarkers.cullingStart = performance.now();
@@ -475,6 +478,12 @@ export class RenderManager {
     this.perfMarkers.renderStart = performance.now();
     
     try {
+      // Verify that the scene and camera are valid
+      if (!this.scene || !this.camera) {
+        console.error('[RenderManager] Cannot render: missing scene or camera');
+        return;
+      }
+      
       // Render scene with or without post-processing
       if (this.settings.postProcessingEnabled && this.composer) {
         // Mark post-processing start
@@ -498,6 +507,13 @@ export class RenderManager {
       this.perfMarkers.renderEnd = performance.now();
     } catch (error) {
       console.error('[RenderManager] Error during rendering:', error);
+      
+      // Try a direct render as fallback
+      try {
+        this.renderer.render(this.scene, this.camera);
+      } catch (fallbackError) {
+        console.error('[RenderManager] Critical render error:', fallbackError);
+      }
     }
     
     // Mark frame end

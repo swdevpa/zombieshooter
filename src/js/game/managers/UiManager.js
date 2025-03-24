@@ -8,7 +8,8 @@ export class UiManager {
 
   init() {
     // Initialize the UI
-    this.ui = new UI(this.game);
+    const gameContainer = document.getElementById('game-container');
+    this.ui = new UI(this.game, gameContainer);
     return this;
   }
 
@@ -237,6 +238,29 @@ export class UiManager {
   hideSettingsMenu() {
     if (this.ui) {
       this.ui.hideSettingsMenu();
+    }
+  }
+
+  // Main Menu UI
+  showMainMenu() {
+    if (this.ui) {
+      this.ui.showMainMenu();
+    }
+  }
+  
+  hideMainMenu() {
+    if (this.ui) {
+      this.ui.hideMainMenu();
+    }
+  }
+  
+  /**
+   * Update visibility of gameplay UI elements
+   * @param {boolean} visible - Whether gameplay UI should be visible
+   */
+  updateGameplayUI(visible) {
+    if (this.ui) {
+      this.ui.updateGameplayUI(visible);
     }
   }
 

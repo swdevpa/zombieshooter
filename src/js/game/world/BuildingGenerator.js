@@ -6,8 +6,9 @@ import * as THREE from 'three';
  * Now supports Level of Detail (LOD) for performance optimization.
  */
 export class BuildingGenerator {
-  constructor(game) {
+  constructor(game, texturingSystem) {
     this.game = game;
+    this.texturingSystem = texturingSystem;
     
     // Building types configuration
     this.buildingTypes = {
@@ -70,6 +71,22 @@ export class BuildingGenerator {
   }
   
   /**
+   * Initialize the building generator
+   * @returns {BuildingGenerator} This BuildingGenerator instance
+   */
+  init() {
+    // Check if texturing system is available
+    if (!this.texturingSystem) {
+      console.warn('BuildingGenerator initialized without TexturingSystem, using fallback materials');
+    }
+    
+    // Initialize templates
+    this.initializeTemplates();
+    
+    return this;
+  }
+  
+  /**
    * Initialize building component templates and material caches
    */
   initializeTemplates() {
@@ -112,9 +129,9 @@ export class BuildingGenerator {
    */
   createMaterials(buildingType, destructionLevel) {
     // Use the texturing system if available, otherwise fall back to basic materials
-    if (this.game.texturingSystem) {
+    if (this.texturingSystem) {
       return {
-        walls: this.game.texturingSystem.getBuildingMaterial(buildingType, destructionLevel),
+        walls: this.texturingSystem.getBuildingMaterial(buildingType, destructionLevel),
         windows: new THREE.MeshStandardMaterial({
           color: 0x90caf9,
           transparent: true,
@@ -122,7 +139,7 @@ export class BuildingGenerator {
           roughness: 0.1,
           metalness: 0.8
         }),
-        roof: this.game.texturingSystem.getBuildingMaterial(buildingType, destructionLevel)
+        roof: this.texturingSystem.getBuildingMaterial(buildingType, destructionLevel)
       };
     }
     
@@ -1338,12 +1355,12 @@ export class BuildingGenerator {
     } = options || {};
     
     // Use optimized geometry if texturing system is available
-    if (this.game.texturingSystem) {
+    if (this.texturingSystem) {
       // Create a unique key for this geometry configuration
       const geometryKey = `building_${width}_${height}_${depth}_${windowsX}_${windowsY}_${hasRoof}_${destructionLevel}`;
       
       // Use getOptimizedGeometry to create or retrieve cached geometry
-      return this.game.texturingSystem.getOptimizedGeometry(geometryKey, () => {
+      return this.texturingSystem.getOptimizedGeometry(geometryKey, () => {
         return this._createBuildingGeometryInternal(width, height, depth, options);
       });
     }

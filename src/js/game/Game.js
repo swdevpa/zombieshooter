@@ -40,6 +40,9 @@ export class Game {
     this.width = window.innerWidth;
     this.height = window.innerHeight;
     
+    // Debug flag for rendering troubleshooting
+    this.debugMode = true;
+    
     // Save the asset loader from parameter
     this.assetLoader = assetLoader || new AssetLoader();
     
@@ -158,11 +161,18 @@ export class Game {
   initThree() {
     // Create scene
     this.scene = new THREE.Scene();
-    //this.scene.background = new THREE.Color(0x88ccee);
-    //this.scene.fog = new THREE.FogExp2(0x88ccee, 0.02);
+    this.scene.background = new THREE.Color(0x333333); // Dark gray background for visibility
 
-    // Create renderer
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Create renderer with focus on compatibility
+    this.renderer = new THREE.WebGLRenderer({ 
+      antialias: true,
+      powerPreference: 'high-performance',
+      alpha: true,
+      stencil: true,
+      depth: true,
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: true
+    });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(this.width, this.height);
     this.renderer.shadowMap.enabled = this.settings.shadows;
@@ -172,15 +182,24 @@ export class Game {
     this.container.appendChild(this.renderer.domElement);
 
     // Create camera
-    this.camera = new THREE.PerspectiveCamera(75, this.width / this.height, 0.1, 1000);
-    // We'll add the camera to the pitchObject after this method returns
-
-    // We'll initialize atmospheric effects in the init method instead of adding lights here
+    this.camera = new THREE.PerspectiveCamera(70, this.width / this.height, 0.1, 1000);
+    // Initialize camera position higher up to see more of the scene
+    this.camera.position.set(0, 5, 0);
+    this.camera.lookAt(10, 0, 10);
     
-    // Add a simple ground
-    const groundGeometry = new THREE.PlaneGeometry(100, 100);
+    // Add default lighting until atmospheric effects are initialized
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+    this.scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    directionalLight.position.set(10, 15, 10);
+    directionalLight.castShadow = true;
+    this.scene.add(directionalLight);
+    
+    // Add a debug ground plane with bright color
+    const groundGeometry = new THREE.PlaneGeometry(500, 500);
     const groundMaterial = new THREE.MeshStandardMaterial({
-      color: 0x999999,
+      color: 0x22FF22, // Bright green for visibility
       roughness: 0.8,
       metalness: 0.2,
     });
@@ -188,6 +207,14 @@ export class Game {
     ground.rotation.x = -Math.PI / 2; // Rotate to be horizontal
     ground.receiveShadow = this.settings.shadows;
     this.scene.add(ground);
+    
+    // Add debug sphere
+    const debugSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(5, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xff0000 })
+    );
+    debugSphere.position.set(10, 10, 10);
+    this.scene.add(debugSphere);
   }
 
   initManagers() {
@@ -221,7 +248,7 @@ export class Game {
     // Weapon manager will be properly initialized in init() after player is created
     
     // Create damage manager
-    this.damageManager = new DamageManager(this);
+    this.damageManager = new DamageManager(this, this.assetLoader);
     
     // Create score manager
     this.scoreManager = new ScoreManager(this);
@@ -258,10 +285,59 @@ export class Game {
 
     // Setup click-to-play
     const container = this.container || document.body;
+    const clickToPlay = document.getElementById('click-to-play');
+    
+    if (clickToPlay) {
+      clickToPlay.addEventListener('click', (event) => {
+        event.preventDefault();
+        
+        // Make sure audio context is resumed
+        if (this.soundManager && this.soundManager.audioContext) {
+          this.soundManager.ensureAudioContext();
+        }
+        
+        // Start the game if it's not already running
+        if (!this.running) {
+          // Show a direct render first to ensure something is visible
+          if (this.renderer && this.scene && this.camera) {
+            this.renderer.render(this.scene, this.camera);
+          }
+          
+          // Now proceed with game state change
+          if (this.gameStateManager) {
+            this.gameStateManager.changeState(this.gameStateManager.states.PLAYING);
+          } else {
+            this.start();
+          }
+        }
+        
+        // Request pointer lock AFTER ensuring rendering works
+        setTimeout(() => {
+          if (!document.pointerLockElement) {
+            this.requestPointerLock();
+          }
+        }, 500);
+      });
+    }
+
+    // Handle clicks anywhere for pointer lock when game is running
     container.addEventListener('click', () => {
-      // Only request pointer lock if the game is actually running
-      if (!this.gameOver && !document.pointerLockElement) {
-        this.requestPointerLock();
+      // Show something before pointer lock to ensure rendering works
+      if (this.renderer && this.scene && this.camera) {
+        this.renderer.render(this.scene, this.camera);
+      }
+      
+      // Only request pointer lock if the game is running and not paused
+      if (this.running && !this.paused && !this.gameOver && !document.pointerLockElement) {
+        // Delay pointer lock slightly to ensure rendering first
+        setTimeout(() => {
+          this.requestPointerLock();
+        }, 100);
+        
+        // Also ensure audio context is running
+        if (this.soundManager && this.soundManager.audioContext) {
+          this.soundManager.ensureAudioContext();
+        }
       }
     });
 
@@ -327,8 +403,11 @@ export class Game {
 
     // Pause/unpause game based on pointer lock
     if (this.pointerLocked) {
-      if (this.paused && !this.gameOver) {
+      if (this.paused && !this.gameOver && this.running) {
         this.unpause();
+      } else if (!this.running && this.gameStateManager) {
+        // Start the game if it's not running
+        this.gameStateManager.changeState(this.gameStateManager.states.PLAYING);
       }
     } else {
       if (!this.paused && this.running && !this.gameOver) {
@@ -488,6 +567,10 @@ export class Game {
     if (this.initialized) return Promise.resolve();
 
     try {
+      // Render a test frame immediately to check rendering works
+      this.renderer.render(this.scene, this.camera);
+      console.log("Initial render test successful");
+      
       // Initialize asset manager first
       await this.assetManager.init();
       
@@ -537,6 +620,9 @@ export class Game {
       
       const cityContainer = this.city.generate();
       this.scene.add(cityContainer);
+      
+      // Render a frame now to verify city is visible
+      this.renderer.render(this.scene, this.camera);
 
       // Initialize atmospheric effects
       this.atmosphericEffects = new AtmosphericEffects(this, this.assetLoader);
@@ -603,11 +689,55 @@ export class Game {
       // Apply initial quality settings
       this.applyQualitySettings();
       
+      // Render a frame after everything is loaded but before benchmark
+      this.renderer.render(this.scene, this.camera);
+      
+      // Set up UI
+      this.ui = new UI(this, this.container);
+      await this.ui.init();
+      
+      // Set up debug UI
+      if (this.ui && this.ui.setupDebugUI) {
+        this.ui.setupDebugUI();
+      }
+      
+      // We'll initialize audio only after user interaction
+      this.setupAudioInitialization();
+
+      // Initialize managers
+      if (this.inputManager) this.inputManager.init();
+      if (this.sceneManager) this.sceneManager.init();
+      if (this.gameStateManager) this.gameStateManager.init();
+      if (this.entityManager) this.entityManager.init();
+      if (this.uiManager) this.uiManager.init();
+      if (this.levelManager) this.levelManager.init();
+      
+      // Initialize managers that might be dependencies for others
+      if (this.renderManager) this.renderManager.init();
+      if (this.effectsManager) this.effectsManager.init();
+      if (this.lightingManager) this.lightingManager.init();
+      if (this.lodManager) this.lodManager.init();
+      if (this.cullingManager) this.cullingManager.init();
+      
+      // Initialize managers that might depend on others
+      if (this.cityManager) await this.cityManager.init();
+      if (this.weaponManager) this.weaponManager.init();
+      if (this.damageManager) this.damageManager.init();
+      if (this.scoreManager) this.scoreManager.init();
+      if (this.soundManager) this.soundManager.init();
+      if (this.difficultyManager) this.difficultyManager.init();
+      if (this.tutorialManager) this.tutorialManager.init();
+      
       // Auto-detect optimal settings if enabled
       if (this.settings.adaptiveQuality && this.performanceOptimizer) {
+        // First apply a safe default
+        this.settings.qualityLevel = 'medium';
+        this.applyQualitySettings();
+        
+        // Then run the benchmark after a longer delay to let the game fully initialize
         setTimeout(() => {
           this.performanceOptimizer.runBenchmark();
-        }, 3000); // Run benchmark after 3 seconds to give time for scene to load
+        }, 5000); // Run benchmark after 5 seconds to give time for scene to load completely
       }
 
       console.log('Game initialized');
@@ -633,48 +763,13 @@ export class Game {
         }
       }
 
-      // Play background music and ambient sounds when game starts
-      if (this.soundManager) {
-        this.soundManager.playMusic('music_menu');
-        this.soundManager.playAmbient('ambient_city');
-      }
+      // Make sure user sees the initial scene
+      this.renderer.render(this.scene, this.camera);
 
-      // Set up UI
-      this.ui = new UI(this, this.container);
-      await this.ui.init();
-      
-      // Set up debug UI
-      if (this.ui && this.ui.setupDebugUI) {
-        this.ui.setupDebugUI();
-      }
-
-      // Initialize managers
-      if (this.inputManager) this.inputManager.init();
-      if (this.sceneManager) this.sceneManager.init();
-      if (this.cityManager) this.cityManager.init();
-      if (this.gameStateManager) this.gameStateManager.init();
-      if (this.entityManager) this.entityManager.init();
-      if (this.uiManager) this.uiManager.init();
-      if (this.levelManager) this.levelManager.init();
-      if (this.cullingManager) this.cullingManager.init();
-      if (this.lodManager) this.lodManager.init();
-      if (this.weaponManager) this.weaponManager.init();
-      if (this.damageManager) this.damageManager.init();
-      if (this.scoreManager) this.scoreManager.init();
-      if (this.soundManager) this.soundManager.init();
-      if (this.renderManager) this.renderManager.init();
-      if (this.effectsManager) this.effectsManager.init();
-      if (this.lightingManager) this.lightingManager.init();
-      if (this.difficultyManager) this.difficultyManager.init();
-      if (this.tutorialManager) this.tutorialManager.init();
-
-      // Initialize effects manager
-      if (this.effectsManager) this.effectsManager.init();
-
-      // Return for chaining
-      return this;
+      this.initialized = true;
+      return Promise.resolve();
     } catch (error) {
-      console.error("Error during game initialization:", error);
+      console.error("Error initializing game:", error);
       return Promise.reject(error);
     }
   }
@@ -698,9 +793,32 @@ export class Game {
         if (!isGround && !isDecorative) {
           object.isCollidable = true;
           
-          // Make sure it has a bounding box for collision detection
+          // Make sure it has a bounding box for collision detection and valid geometry
           if (object.geometry && !object.geometry.boundingBox) {
-            object.geometry.computeBoundingBox();
+            // Check if geometry has valid position attributes before computing bounding box
+            const posAttr = object.geometry.getAttribute('position');
+            if (posAttr && posAttr.count > 0) {
+              // Check for NaN values in position attribute
+              let hasNaN = false;
+              for (let i = 0; i < Math.min(10, posAttr.count * 3); i++) {
+                if (isNaN(posAttr.array[i])) {
+                  hasNaN = true;
+                  break;
+                }
+              }
+              
+              if (!hasNaN) {
+                try {
+                  object.geometry.computeBoundingBox();
+                } catch (error) {
+                  console.warn(`Error computing bounding box for ${object.name}:`, error);
+                }
+              } else {
+                console.warn('Skipping bounding box computation for object with NaN in geometry:', object.name);
+              }
+            } else {
+              console.warn('Skipping bounding box computation for object with invalid geometry:', object.name);
+            }
           }
         }
       }
@@ -713,16 +831,12 @@ export class Game {
    * Start a new game
    */
   start(tutorialMode = false) {
-    console.log('Starting game...');
+    console.log("Starting game", tutorialMode ? "in tutorial mode" : "");
     
-    // Reset game state
-    this.running = true;
-    this.paused = false;
-    this.gameOver = false;
-    
-    // Reset score
-    if (this.scoreManager) {
-      this.scoreManager.resetScore();
+    // Set game state to playing
+    if (this.gameStateManager) {
+      this.gameStateManager.currentState = this.gameStateManager.states.PLAYING;
+      this.gameState.status = 'playing';
     }
     
     // Create a new level if needed
@@ -752,6 +866,28 @@ export class Game {
     }
     
     console.log('Game started successfully' + (tutorialMode ? ' in tutorial mode' : ''));
+  }
+
+  // Method to initialize or reset player state
+  initializePlayer() {
+    if (!this.player) {
+      console.warn("Player not created yet, creating now");
+      this.player = new Player(this, this.assetLoader);
+      this.player.init();
+      this.scene.add(this.player.container);
+    } else {
+      // Reset player state
+      console.log("Resetting player state");
+      this.player.reset();
+      
+      // Position player at city start location if available
+      if (this.city) {
+        const playerStartPos = this.city.getPlayerStartPosition();
+        this.player.setPosition(playerStartPos.x, playerStartPos.y, playerStartPos.z);
+      } else {
+        this.player.setPosition(10, 0, 10);
+      }
+    }
   }
 
   onResize() {
@@ -927,8 +1063,11 @@ export class Game {
     }
 
     // Update culling system
-    if (this.cullingManager && this.settings.cullingEnabled) {
-      this.cullingManager.update(deltaTime, this.camera);
+    if (this.cullingManager && this.settings.cullingEnabled && this.camera) {
+      // Check if camera matrices are initialized
+      if (this.camera.projectionMatrix && this.camera.matrixWorldInverse) {
+        this.cullingManager.update(this.camera);
+      }
     }
 
     // Update LOD system
@@ -972,115 +1111,72 @@ export class Game {
 
   animate() {
     // Request next frame
-    if (this.running) {
-      this.frameTiming.frameId = requestAnimationFrame(this.animate.bind(this));
-    }
+    this.frameTiming.frameId = requestAnimationFrame(this.animate.bind(this));
     
-    // Get current time
+    // Calculate delta time
     const now = performance.now();
+    this.frameTiming.deltaTime = (now - this.frameTiming.lastFrameTime) / 1000;
+    this.frameTiming.lastFrameTime = now;
     
-    // Calculate delta time (capped to avoid huge jumps)
-    const rawDeltaTime = this.clock.getDelta();
-    let deltaTime = Math.min(rawDeltaTime, 0.1); // Cap to 100ms
-    
-    // Track frame start time
-    this.frameTiming.frameStartTime = now;
-    
-    // If the game is not running, only update minimal components
-    if (!this.running || this.paused) {
-      // Still update sound manager even when paused for UI sounds
-      if (this.soundManager) {
-        this.soundManager.update(deltaTime);
+    // Apply frame rate limiting if enabled
+    if (this.settings.limitFPS) {
+      // If not enough time has passed since last frame, skip update
+      const frameTime = now - this.frameTiming.frameStartTime;
+      if (frameTime < this.frameTiming.frameTimeTarget) {
+        return;
       }
-      
-      // Still render the scene for pause menu
-      if (this.renderManager) {
-        this.renderManager.render(deltaTime);
-      } else {
-        this.render();
-      }
-      return;
+      this.frameTiming.frameStartTime = now;
     }
     
     // Update FPS counter
-    this.updateFPS(deltaTime);
+    this.updateFPS(this.frameTiming.deltaTime);
     
-    // Update performance monitor if available
+    // Update game state if running
+    if (this.running && !this.paused) {
+      this.update(now);
+    }
+    
+    // Always render - even if game is paused or not running
+    // This ensures we see something during initialization
+    this.render();
+    
+    // Update performance monitor
     if (this.performanceMonitor) {
-      this.performanceMonitor.update(deltaTime);
+      this.performanceMonitor.update(this.frameTiming.deltaTime);
     }
     
-    // Update player and camera
-    if (this.player && this.player.enabled) {
-      this.player.update(deltaTime);
-    }
-    
-    // Update camera effects like head bobbing and recoil
-    this.updateMouseLook(deltaTime);
-    
-    // Update all managers
-    if (this.sceneManager) this.sceneManager.update(deltaTime);
-    if (this.inputManager) this.inputManager.update(deltaTime);
-    if (this.entityManager) this.entityManager.update(deltaTime);
-    if (this.zombieManager) this.zombieManager.update(deltaTime);
-    if (this.weaponManager) this.weaponManager.update(deltaTime);
-    if (this.uiManager) this.uiManager.update(deltaTime);
-    if (this.levelManager) this.levelManager.update(deltaTime);
-    if (this.cullingManager && this.settings.cullingEnabled) this.cullingManager.update(deltaTime);
-    if (this.lodManager) this.lodManager.update(deltaTime);
-    if (this.damageManager) this.damageManager.update(deltaTime);
-    if (this.scoreManager) this.scoreManager.update(deltaTime);
-    if (this.gameStateManager) this.gameStateManager.update(deltaTime);
-    if (this.soundManager) this.soundManager.update(deltaTime);
-    if (this.effectsManager) this.effectsManager.update(deltaTime);
-    
-    // Update atmospheric effects if available
-    if (this.atmosphericEffects) {
-      this.atmosphericEffects.update(deltaTime);
-    }
-    
-    // Update lighting manager
-    if (this.lightingManager) {
-      this.lightingManager.update(deltaTime);
-    }
-    
-    // Update animation manager
-    if (this.animationManager) {
-      this.animationManager.update(deltaTime);
-    }
-    
-    // Render scene using RenderManager if available, otherwise use legacy render method
-    if (this.renderManager) {
-      this.renderManager.render(deltaTime);
-    } else {
-      // Reset renderer info for new frame
-      this.renderer.info.reset();
-      
-      // Update game state
-      this.update(deltaTime);
-      
-      // Render scene
-      this.render();
+    // Update performance optimizer
+    if (this.performanceOptimizer) {
+      this.performanceOptimizer.update(this.frameTiming.deltaTime);
     }
   }
 
   render() {
+    // Only render if the game is running or we're explicitly forcing render for debugging
+    if (!this.running && !this.gameStateManager) return;
+
     try {
-      // Only render if we have required objects
-      if (!this.scene || !this.camera || !this.renderer) {
-        console.warn('Cannot render: missing required objects');
-        return;
+      // Direct renderer approach for maximum compatibility
+      if (this.scene && this.camera && this.renderer) {
+        // Force render without any post-processing or effects
+        this.renderer.render(this.scene, this.camera);
+        
+        // If RenderManager is initialized and we're not in benchmark mode, use it
+        if (this.renderManager && !this.performanceOptimizer?.config?.benchmarkEnabled) {
+          this.renderManager.render(this.clock.getDelta());
+        }
+      } else {
+        console.warn('Cannot render: missing scene, camera, or renderer');
       }
-      
-      // Validate scene objects before rendering to prevent null errors
-      this.validateSceneObjects(this.scene);
-      
-      // Render scene with camera
-      this.renderer.render(this.scene, this.camera);
     } catch (error) {
       console.error('Error during rendering:', error);
-      // Try to recover by revalidating the scene
-      this.validateSceneObjects(this.scene);
+      
+      // Last resort direct render
+      try {
+        this.renderer.render(this.scene, this.camera);
+      } catch (fallbackError) {
+        console.error('Critical rendering error:', fallbackError);
+      }
     }
   }
 
@@ -1505,5 +1601,49 @@ export class Game {
     if (this.gameStateManager) {
       this.gameStateManager.changeState(this.gameStateManager.states.GAME_OVER);
     }
+  }
+
+  setupAudioInitialization() {
+    if (!this.soundManager || !this.soundManager.audioContext) return;
+    
+    // Function to start audio
+    const startAudio = () => {
+      // Resume AudioContext
+      if (this.soundManager.audioContext.state === 'suspended') {
+        this.soundManager.audioContext.resume().then(() => {
+          console.log('AudioContext resumed successfully');
+          
+          // Play background music and ambient sounds
+          try {
+            this.soundManager.playMusic('music_menu');
+            this.soundManager.playAmbient('ambient_city');
+          } catch (error) {
+            console.error('Error playing audio:', error);
+          }
+        }).catch(err => {
+          console.error('Failed to resume AudioContext:', err);
+        });
+      } else {
+        // AudioContext is already running
+        try {
+          this.soundManager.playMusic('music_menu');
+          this.soundManager.playAmbient('ambient_city');
+        } catch (error) {
+          console.error('Error playing audio:', error);
+        }
+      }
+      
+      // Remove event listeners once audio is started
+      document.removeEventListener('click', startAudio);
+      document.removeEventListener('keydown', startAudio);
+      document.removeEventListener('touchstart', startAudio);
+    };
+    
+    // Add event listeners for user interaction
+    document.addEventListener('click', startAudio);
+    document.addEventListener('keydown', startAudio);
+    document.addEventListener('touchstart', startAudio);
+    
+    console.log('Audio will start after user interaction');
   }
 }

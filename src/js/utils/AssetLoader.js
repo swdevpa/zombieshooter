@@ -96,40 +96,33 @@ export class AssetLoader {
   }
 
   async createTextures() {
-    console.log('Starting texture creation process...');
-    const textureTimerStart = performance.now();
+    // Create all procedural textures
+    await Promise.all([
+      this._createTextureWithProgress('player', this.createPlayerTexture.bind(this)),
+      this._createTextureWithProgress('playerHead', this.createPlayerHeadTexture.bind(this)),
+      this._createTextureWithProgress('weapon', this.createWeaponTexture.bind(this)),
+      this._createTextureWithProgress('zombie', this.createZombieTexture.bind(this)),
+      this._createTextureWithProgress('zombieHead', this.createZombieHeadTexture.bind(this)),
+      this._createTextureWithProgress('grass', this.createGrassTexture.bind(this)),
+      this._createTextureWithProgress('dirt', this.createDirtTexture.bind(this)),
+      this._createTextureWithProgress('stone', this.createStoneTexture.bind(this)),
+      this._createTextureWithProgress('wall', this.createWallTexture.bind(this)),
+      this._createTextureWithProgress('water', this.createWaterTexture.bind(this)),
+      this._createTextureWithProgress('wood', this.createWoodTexture.bind(this)),
+      this._createTextureWithProgress('tree', this.createTreeTexture.bind(this)),
+      this._createTextureWithProgress('bullet', this.createBulletTexture.bind(this)),
+      this._createTextureWithProgress('muzzleFlash', this.createMuzzleFlashTexture.bind(this)),
+      this._createTextureWithProgress('ground', this.createGroundTexture.bind(this)),
+      this._createTextureWithProgress('path', this.createPathTexture.bind(this)),
+      this._createTextureWithProgress('concrete', this.createConcreteTexture.bind(this)),
+      this._createTextureWithProgress('road', this.createRoadTexture.bind(this)),
+      this._createTextureWithProgress('sidewalk', this.createSidewalkTexture.bind(this)),
+      this._createTextureWithProgress('buildingWall', this.createBuildingWallTexture.bind(this)),
+      this._createTextureWithProgress('buildingGlass', this.createBuildingGlassTexture.bind(this))
+    ]);
     
-    const textures = [
-      'player', 
-      'playerHead',
-      'weapon',
-      'grass', 
-      'water',
-      'dirt',
-      'stone',
-      'wall',
-      'wood',
-      'tree',
-      'zombie',
-      'zombieHead',
-      'bullet',
-      'ground',
-      'path',
-      'muzzleFlash'  // Added muzzleFlash to the list
-    ];
-    
-    // Create a promise for each texture
-    const texturePromises = textures.map(name => 
-      this._createTextureWithProgress(name, () => this[`create${name.charAt(0).toUpperCase() + name.slice(1)}Texture`]())
-    );
-    
-    // Wait for all textures to be created
-    await Promise.all(texturePromises);
-    
-    const textureTimerEnd = performance.now();
-    console.log(`All textures created programmatically in ${(textureTimerEnd - textureTimerStart).toFixed(2)}ms:`, textures);
-    
-    return this.textures;
+    this.setupTextureProperties();
+    return true;
   }
 
   async _createTextureWithProgress(name, createFn) {
@@ -1856,5 +1849,170 @@ export class AssetLoader {
     
     console.warn(`Sound not found: ${name} in category ${category}`);
     return null;
+  }
+
+  /**
+   * Creates a concrete texture
+   * @returns {THREE.Texture} The concrete texture
+   */
+  createConcreteTexture() {
+    const size = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    
+    // Base concrete color
+    ctx.fillStyle = '#A7A7A7';
+    ctx.fillRect(0, 0, size, size);
+    
+    // Add concrete texture patterns
+    for (let i = 0; i < 400; i++) {
+      const x = Math.random() * size;
+      const y = Math.random() * size;
+      const radius = 0.5 + Math.random() * 2;
+      
+      // Random gray shade for concrete speckles
+      const shade = 150 + Math.floor(Math.random() * 50);
+      ctx.fillStyle = `rgba(${shade}, ${shade}, ${shade}, 0.5)`;
+      
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Add cracks
+    for (let i = 0; i < 8; i++) {
+      const startX = Math.random() * size;
+      const startY = Math.random() * size;
+      const length = 30 + Math.random() * 150;
+      const angle = Math.random() * Math.PI * 2;
+      
+      ctx.strokeStyle = 'rgba(60, 60, 60, 0.4)';
+      ctx.lineWidth = 0.5 + Math.random();
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      
+      // Create jagged crack path
+      const segments = 5 + Math.floor(Math.random() * 5);
+      let lastX = startX;
+      let lastY = startY;
+      
+      for (let j = 1; j <= segments; j++) {
+        const segmentLength = length / segments;
+        const deviation = 10 - Math.random() * 20;
+        const segmentAngle = angle + deviation / 10;
+        
+        const newX = lastX + Math.cos(segmentAngle) * segmentLength;
+        const newY = lastY + Math.sin(segmentAngle) * segmentLength;
+        
+        ctx.lineTo(newX, newY);
+        lastX = newX;
+        lastY = newY;
+      }
+      
+      ctx.stroke();
+    }
+    
+    // Add some noise for texture variation
+    this._addNoiseToCanvas(ctx, size, size, 6);
+    
+    this.textures['concrete'] = new THREE.CanvasTexture(canvas);
+    return this.textures['concrete'];
+  }
+
+  // Road texture
+  createRoadTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+
+    // Base asphalt color
+    ctx.fillStyle = '#333333';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Add noise pattern for asphalt texture
+    this._addNoiseToCanvas(ctx, canvas.width, canvas.height, 15);
+    
+    // Add lane markings
+    ctx.fillStyle = '#fff9c4';
+    
+    // Center line (dashed)
+    const lineWidth = 4;
+    const dashLength = 20;
+    const gapLength = 10;
+    
+    for (let y = 0; y < canvas.height; y += dashLength + gapLength) {
+      ctx.fillRect(canvas.width / 2 - lineWidth / 2, y, lineWidth, dashLength);
+    }
+    
+    // Add some cracks and wear
+    ctx.strokeStyle = '#404040';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 8; i++) {
+      const x1 = Math.random() * canvas.width;
+      const y1 = Math.random() * canvas.height;
+      const x2 = x1 + (Math.random() * 30 - 15);
+      const y2 = y1 + (Math.random() * 30 - 15);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    this.textures['road'] = new THREE.CanvasTexture(canvas);
+    return this.textures['road'];
+  }
+
+  // Sidewalk texture
+  createSidewalkTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = this.textureSize;
+    canvas.height = this.textureSize;
+    const ctx = canvas.getContext('2d');
+
+    // Base concrete color
+    ctx.fillStyle = '#c2c2c2';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Add noise pattern for concrete texture
+    this._addNoiseToCanvas(ctx, canvas.width, canvas.height, 10);
+    
+    // Add tile pattern
+    ctx.strokeStyle = '#a0a0a0';
+    ctx.lineWidth = 1;
+    
+    const tileSize = 16;
+    
+    for (let y = 0; y < canvas.height; y += tileSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    }
+    
+    for (let x = 0; x < canvas.width; x += tileSize) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
+    }
+    
+    // Add some cracks
+    ctx.strokeStyle = '#909090';
+    for (let i = 0; i < 5; i++) {
+      const x1 = Math.random() * canvas.width;
+      const y1 = Math.random() * canvas.height;
+      const x2 = x1 + (Math.random() * 20 - 10);
+      const y2 = y1 + (Math.random() * 20 - 10);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    this.textures['sidewalk'] = new THREE.CanvasTexture(canvas);
+    return this.textures['sidewalk'];
   }
 }

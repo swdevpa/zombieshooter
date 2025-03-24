@@ -112,14 +112,6 @@ export class City {
     // For debugging, don't center the city - keep it at origin
     console.log('City generation complete');
 
-    // Add a very large debug sphere that should always be visible
-    const debugSphere = new THREE.Mesh(
-      new THREE.SphereGeometry(5, 16, 16),
-      new THREE.MeshBasicMaterial({ color: 0xff00ff })
-    );
-    debugSphere.position.set(0, 20, 0);
-    this.container.add(debugSphere);
-
     return this.container;
   }
   

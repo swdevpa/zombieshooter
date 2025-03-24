@@ -81,6 +81,15 @@ export class DamageManager {
   }
   
   /**
+   * Initialize the damage manager
+   */
+  init() {
+    // Initialize any resources or setup needed
+    console.log('DamageManager initialized');
+    return this;
+  }
+  
+  /**
    * Update active damage effects
    * @param {number} deltaTime - Time since last update in seconds
    */
