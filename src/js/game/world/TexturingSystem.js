@@ -550,4 +550,22 @@ export class TexturingSystem {
     
     console.log('TexturingSystem materials disposed');
   }
+  
+  /**
+   * Returns a random color from the specified building type palette
+   * @param {string} buildingType - The type of building (residential, commercial, industrial)
+   * @returns {number} - Three.js compatible color value
+   */
+  getRandomColorFromPalette(buildingType) {
+    if (!this.colorPalettes[buildingType]) {
+      console.warn(`No color palette found for building type: ${buildingType}, using residential`);
+      buildingType = 'residential';
+    }
+    
+    const colorIndex = Math.floor(Math.random() * this.colorPalettes[buildingType].length);
+    const hexColor = this.colorPalettes[buildingType][colorIndex];
+    
+    // Convert hex color string to THREE.js color number
+    return new THREE.Color(hexColor).getHex();
+  }
 } 

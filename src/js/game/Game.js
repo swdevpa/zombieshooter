@@ -218,8 +218,7 @@ export class Game {
     // Create LOD manager
     this.lodManager = new LODManager(this);
     
-    // Create weapon manager
-    this.weaponManager = new WeaponManager(this);
+    // Weapon manager will be properly initialized in init() after player is created
     
     // Create damage manager
     this.damageManager = new DamageManager(this);
@@ -519,8 +518,10 @@ export class Game {
       this.scene.add(this.player.container);
 
       // Initialize weapon manager
-      this.weaponManager = new WeaponManager(this, this.player, this.assetLoader);
-      this.weaponManager.init();
+      if (!this.weaponManager) {
+        this.weaponManager = new WeaponManager(this, this.player, this.assetLoader);
+        this.weaponManager.init();
+      }
 
       // Create city
       this.city = new City(this, {

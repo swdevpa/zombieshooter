@@ -244,7 +244,7 @@
           "id": "object-pooling",
           "title": "Implement object pooling for zombies and effects",
           "status": "done",
-          "notes": "Implemented comprehensive object pooling system with a centralized EffectsManager for all visual effects (blood splatter, explosions, muzzle flash, spark impacts, zombie spawn effects) and a ZombiePool for zombie entities. Added proper resource management with initialization, reuse and disposal of pooled objects to reduce garbage collection and improve performance."
+          "notes": "Implemented comprehensive object pooling system with a centralized EffectsManager for all visual effects (blood splatter, explosions, muzzle flash, spark impacts, zombie spawn effects) and a ZombiePool for zombie entities. Added proper resource management with initialization, reuse and disposal of pooled objects to reduce garbage collection and improve performance. Fixed ObjectPool initialization issues to support both function-style and object-style configuration patterns. Fixed critical building generation errors by adding missing createBalconies method and implementing safe geometry parameter handling in damage application methods."
         }
       ]
     },

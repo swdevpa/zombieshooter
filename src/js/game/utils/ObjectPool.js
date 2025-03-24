@@ -5,13 +5,27 @@
 export class ObjectPool {
   /**
    * Create a new object pool
-   * @param {Function} createFn - Factory function to create new objects
+   * @param {Function|Object} createFn - Factory function to create new objects or configuration object
    * @param {Function} resetFn - Function to reset objects when returned to pool
    * @param {number} initialSize - Initial pool size
    */
   constructor(createFn, resetFn, initialSize = 10) {
-    this.createFn = createFn;
-    this.resetFn = resetFn;
+    // Support for object-style configuration
+    if (typeof createFn === 'object') {
+      const config = createFn;
+      this.createFn = config.create || config.createFn;
+      this.resetFn = config.reset || config.resetFn;
+      initialSize = config.initialSize || initialSize;
+    } else {
+      this.createFn = createFn;
+      this.resetFn = resetFn;
+    }
+
+    // Ensure createFn is a function
+    if (typeof this.createFn !== 'function') {
+      throw new Error('ObjectPool requires a createFn function');
+    }
+    
     this.pool = [];
     this.activeObjects = new Set();
     

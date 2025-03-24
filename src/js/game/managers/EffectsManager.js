@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ObjectPool } from '../../utils/ObjectPool.js';
+import { ObjectPool } from '../utils/ObjectPool.js';
 
 /**
  * Manages visual effects with object pooling for optimized performance
@@ -57,27 +57,34 @@ export class EffectsManager {
       }
     };
     
-    // Initialize pools
-    this.pools = {
-      muzzleFlash: new ObjectPool({
-        create: () => this.createMuzzleFlashObject(),
-        reset: (obj) => this.resetMuzzleFlashEffect(obj),
-        initialSize: 10,
-        maxSize: 20
-      }),
-      sparkImpact: new ObjectPool({
-        create: () => this.createSparkImpactObject(),
-        reset: (obj) => this.resetSparkImpactEffect(obj),
-        initialSize: 20,
-        maxSize: 40
-      })
-    };
+    // Initialize pools - support both function and object style
+    this.initObjectPools();
     
     // Initialize active effects array
     this.activeEffects = [];
     
     // Set quality level
     this.setQuality(this.settings.quality);
+  }
+  
+  /**
+   * Initialize object pools with proper error handling
+   */
+  initObjectPools() {
+    try {
+      this.pools = {
+        muzzleFlash: new ObjectPool(
+          () => this.createMuzzleFlashObject(),
+          10
+        ),
+        sparkImpact: new ObjectPool(
+          () => this.createSparkImpactObject(),
+          20
+        )
+      };
+    } catch (error) {
+      console.error('Error initializing effect pools:', error);
+    }
   }
   
   /**

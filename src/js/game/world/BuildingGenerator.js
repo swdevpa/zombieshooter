@@ -957,6 +957,114 @@ export class BuildingGenerator {
   }
   
   /**
+   * Create balconies for residential buildings
+   * @param {number} width - Building width
+   * @param {number} depth - Building depth
+   * @param {number} height - Building height
+   * @returns {THREE.Group} Group containing balcony meshes
+   */
+  createBalconies(width, depth, height) {
+    const balconiesGroup = new THREE.Group();
+    
+    // How many floors could have balconies
+    const floors = Math.floor(height / 3) - 1; // Skip ground floor
+    if (floors <= 0) return balconiesGroup;
+    
+    // Pick 1-3 random floors for balconies
+    const numBalconyFloors = Math.min(Math.ceil(Math.random() * 3), floors);
+    const balconyFloors = [];
+    
+    while (balconyFloors.length < numBalconyFloors) {
+      const floor = Math.floor(Math.random() * floors) + 1;
+      if (!balconyFloors.includes(floor)) {
+        balconyFloors.push(floor);
+      }
+    }
+    
+    // For each selected floor, add 1-2 balconies
+    balconyFloors.forEach(floor => {
+      const floorHeight = floor * 3;
+      const numBalconies = Math.floor(Math.random() * 2) + 1;
+      
+      // Create balcony geometry
+      const balconyWidth = 1.5;
+      const balconyDepth = 1.0;
+      const balconyHeight = 0.2;
+      const balconyGeometry = new THREE.BoxGeometry(balconyWidth, balconyHeight, balconyDepth);
+      
+      // Balcony material
+      const balconyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x999999,
+        roughness: 0.8,
+        metalness: 0.2
+      });
+      
+      for (let i = 0; i < numBalconies; i++) {
+        const balconyMesh = new THREE.Mesh(balconyGeometry, balconyMaterial);
+        
+        // Railing
+        const railingHeight = 1.0;
+        const railingGeometry = new THREE.BoxGeometry(balconyWidth, railingHeight, 0.05);
+        const railingMaterial = new THREE.MeshStandardMaterial({
+          color: 0x888888,
+          roughness: 0.7,
+          metalness: 0.3,
+          transparent: true,
+          opacity: 0.7
+        });
+        
+        // Create railing parts
+        const frontRailing = new THREE.Mesh(railingGeometry, railingMaterial);
+        frontRailing.position.set(0, railingHeight/2, balconyDepth/2);
+        
+        const leftRailing = new THREE.Mesh(
+          new THREE.BoxGeometry(0.05, railingHeight, balconyDepth),
+          railingMaterial
+        );
+        leftRailing.position.set(-balconyWidth/2, railingHeight/2, 0);
+        
+        const rightRailing = new THREE.Mesh(
+          new THREE.BoxGeometry(0.05, railingHeight, balconyDepth),
+          railingMaterial
+        );
+        rightRailing.position.set(balconyWidth/2, railingHeight/2, 0);
+        
+        // Add railings to balcony
+        balconyMesh.add(frontRailing);
+        balconyMesh.add(leftRailing);
+        balconyMesh.add(rightRailing);
+        
+        // Position balcony on a random wall
+        const wallChoice = Math.floor(Math.random() * 4);
+        const xOffset = (Math.random() - 0.5) * (width - balconyWidth);
+        const zOffset = (Math.random() - 0.5) * (depth - balconyDepth);
+        
+        switch (wallChoice) {
+          case 0: // Front
+            balconyMesh.position.set(xOffset, floorHeight, depth/2 + balconyDepth/2);
+            break;
+          case 1: // Right
+            balconyMesh.position.set(width/2 + balconyDepth/2, floorHeight, zOffset);
+            balconyMesh.rotation.y = Math.PI/2;
+            break;
+          case 2: // Back
+            balconyMesh.position.set(xOffset, floorHeight, -depth/2 - balconyDepth/2);
+            balconyMesh.rotation.y = Math.PI;
+            break;
+          case 3: // Left
+            balconyMesh.position.set(-width/2 - balconyDepth/2, floorHeight, zOffset);
+            balconyMesh.rotation.y = -Math.PI/2;
+            break;
+        }
+        
+        balconiesGroup.add(balconyMesh);
+      }
+    });
+    
+    return balconiesGroup;
+  }
+  
+  /**
    * Apply damage effects to a building based on destruction level
    * @param {THREE.Group} buildingGroup - The building group to modify
    * @param {number} destructionLevel - Level of destruction (1-3)
@@ -1048,9 +1156,24 @@ export class BuildingGenerator {
       // Create "holes" in the building by adding damaged sections
       const geometry = mainMesh.geometry;
       const position = mainMesh.position.clone();
-      const width = geometry.parameters.width;
-      const height = geometry.parameters.height;
-      const depth = geometry.parameters.depth;
+      
+      // Safely extract geometry dimensions, fallback to bounding box if parameters not available
+      let width, height, depth;
+      
+      if (geometry.parameters) {
+        width = geometry.parameters.width || 1;
+        height = geometry.parameters.height || 1;
+        depth = geometry.parameters.depth || 1;
+      } else {
+        // Calculate dimensions from bounding box as fallback
+        if (!geometry.boundingBox) {
+          geometry.computeBoundingBox();
+        }
+        const bbox = geometry.boundingBox;
+        width = bbox.max.x - bbox.min.x;
+        height = bbox.max.y - bbox.min.y;
+        depth = bbox.max.z - bbox.min.z;
+      }
       
       // Add damage elements - could be more sophisticated with custom geometry
       const damageGeometry = new THREE.BoxGeometry(
@@ -1124,9 +1247,24 @@ export class BuildingGenerator {
     if (mainMesh) {
       // Create a "collapsed" section by modifying the main building geometry
       const geometry = mainMesh.geometry;
-      const width = geometry.parameters.width;
-      const height = geometry.parameters.height;
-      const depth = geometry.parameters.depth;
+      
+      // Safely extract geometry dimensions, fallback to bounding box if parameters not available
+      let width, height, depth;
+      
+      if (geometry.parameters) {
+        width = geometry.parameters.width || 1;
+        height = geometry.parameters.height || 1;
+        depth = geometry.parameters.depth || 1;
+      } else {
+        // Calculate dimensions from bounding box as fallback
+        if (!geometry.boundingBox) {
+          geometry.computeBoundingBox();
+        }
+        const bbox = geometry.boundingBox;
+        width = bbox.max.x - bbox.min.x;
+        height = bbox.max.y - bbox.min.y;
+        depth = bbox.max.z - bbox.min.z;
+      }
       
       // Determine which part of the building has collapsed
       const collapseSide = Math.floor(Math.random() * 4);

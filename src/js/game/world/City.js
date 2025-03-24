@@ -502,8 +502,8 @@ export class City {
             blockId: `${blockX}_${blockZ}_${i}`
           });
           
-          // Add building to group
-          buildingsGroup.add(buildingMesh);
+          // Add building container to group
+          buildingsGroup.add(buildingMesh.container);
           
           // Update building data for city grid
           buildings.push({

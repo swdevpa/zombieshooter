@@ -1,0 +1,22 @@
+## Developer Notes
+
+Fixed critical errors in the building generation system:
+
+1. Added missing `createBalconies` method to BuildingGenerator.js
+   - Implemented a method to create realistic balconies for residential buildings
+   - Includes railing details and random placement on building sides
+
+2. Added missing `getRandomColorFromPalette` method to TexturingSystem.js
+   - Implemented color palette selection function for building materials
+   - Converts hex color string to THREE.js color format
+
+3. Fixed Object3D error in City.js
+   - Modified createBuildings method to add building.container to the scene instead of the building object itself
+   - The building object was not a THREE.Object3D instance, but contains one in its container property
+
+These changes resolve the primary errors shown in the console:
+- "this.createBalconies is not a function" in BuildingGenerator.js
+- "this.getRandomColorFromPalette is not a function" in TexturingSystem.js
+- "THREE.Object3D.add: object not an instance of THREE.Object3D" in City.js
+
+The game should now be able to generate buildings without the previous errors. 
