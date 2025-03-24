@@ -1123,6 +1123,84 @@ export class UI {
       this.fpsElement.textContent = 'FPS: 0';
       document.body.appendChild(this.fpsElement);
     }
+    
+    // Add performance settings section
+    if (!document.getElementById('performance-settings')) {
+      const settingsContainer = document.getElementById('settings-menu') || this.createSettingsContainer();
+      
+      // Create performance settings section
+      const performanceSection = document.createElement('div');
+      performanceSection.id = 'performance-settings';
+      performanceSection.className = 'settings-section';
+      
+      performanceSection.innerHTML = `
+        <h3>Performance Settings</h3>
+        <div class="settings-row">
+          <label for="quality-dropdown">Quality Preset:</label>
+          <select id="quality-dropdown">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="ultra">Ultra</option>
+          </select>
+        </div>
+        <div class="settings-row">
+          <label for="adaptive-quality-checkbox">Adaptive Quality:</label>
+          <input type="checkbox" id="adaptive-quality-checkbox" checked>
+        </div>
+        <div class="settings-row">
+          <button id="run-benchmark-button" class="settings-button">Run Benchmark</button>
+        </div>
+        <div class="benchmark-info" id="benchmark-info" style="display: none;">
+          <p>Benchmarking in progress... <span id="benchmark-progress">0%</span></p>
+        </div>
+      `;
+      
+      settingsContainer.appendChild(performanceSection);
+      
+      // Add event listeners for performance settings
+      const qualityDropdown = document.getElementById('quality-dropdown');
+      if (qualityDropdown) {
+        qualityDropdown.value = this.game.settings.qualityLevel;
+        qualityDropdown.addEventListener('change', () => {
+          this.game.settings.qualityLevel = qualityDropdown.value;
+          this.game.applyQualitySettings();
+        });
+      }
+      
+      const adaptiveQualityCheckbox = document.getElementById('adaptive-quality-checkbox');
+      if (adaptiveQualityCheckbox) {
+        adaptiveQualityCheckbox.checked = this.game.settings.adaptiveQuality;
+        adaptiveQualityCheckbox.addEventListener('change', () => {
+          this.game.settings.adaptiveQuality = adaptiveQualityCheckbox.checked;
+        });
+      }
+      
+      const runBenchmarkButton = document.getElementById('run-benchmark-button');
+      if (runBenchmarkButton) {
+        runBenchmarkButton.addEventListener('click', () => {
+          if (this.game.performanceOptimizer) {
+            // Show benchmark info
+            const benchmarkInfo = document.getElementById('benchmark-info');
+            if (benchmarkInfo) {
+              benchmarkInfo.style.display = 'block';
+            }
+            
+            // Run benchmark and hide info when done
+            this.game.performanceOptimizer.runBenchmark().then(() => {
+              if (benchmarkInfo) {
+                benchmarkInfo.style.display = 'none';
+              }
+              
+              // Update quality dropdown to match recommended settings
+              if (qualityDropdown) {
+                qualityDropdown.value = this.game.settings.qualityLevel;
+              }
+            });
+          }
+        });
+      }
+    }
   }
   
   // Initialize settings event handlers
@@ -1167,6 +1245,17 @@ export class UI {
         this.toggleSettingsMenu();
       }
     });
+    
+    // Set performance settings
+    const qualityDropdown = document.getElementById('quality-dropdown');
+    if (qualityDropdown) {
+      qualityDropdown.value = this.game.settings.qualityLevel;
+    }
+    
+    const adaptiveQualityCheckbox = document.getElementById('adaptive-quality-checkbox');
+    if (adaptiveQualityCheckbox) {
+      adaptiveQualityCheckbox.checked = this.game.settings.adaptiveQuality;
+    }
   }
   
   // Update settings UI based on game state
@@ -2115,6 +2204,11 @@ export class UI {
           if (this.game.gameState) {
             this.game.gameState.difficulty = difficulty;
           }
+          
+          // Set difficulty in DifficultyManager if available
+          if (this.game.difficultyManager) {
+            this.game.difficultyManager.setDifficulty(difficulty);
+          }
         });
       });
     }
@@ -2467,9 +2561,115 @@ export class UI {
   
   // Update quality UI when changed
   updateQualityUI(quality) {
-    const qualitySelect = document.querySelector('#quality-select');
-    if (qualitySelect) {
-      qualitySelect.value = quality;
+    // Update the quality indicator in the UI
+    const qualityElement = document.getElementById('quality-indicator');
+    if (qualityElement) {
+      qualityElement.textContent = quality.charAt(0).toUpperCase() + quality.slice(1);
     }
+    
+    // Update the quality dropdown
+    const qualityDropdown = document.getElementById('quality-dropdown');
+    if (qualityDropdown) {
+      qualityDropdown.value = quality;
+    }
+  }
+  
+  /**
+   * Update difficulty indicator
+   * @param {string} difficultyName - Name of the difficulty 
+   * @param {string} difficultyColor - Color for the difficulty indicator
+   */
+  updateDifficultyIndicator(difficultyName, difficultyColor) {
+    // Create or get difficulty indicator
+    let difficultyIndicator = document.getElementById('difficulty-indicator');
+    
+    if (!difficultyIndicator) {
+      // Create difficulty indicator
+      difficultyIndicator = document.createElement('div');
+      difficultyIndicator.id = 'difficulty-indicator';
+      
+      // Style the indicator
+      const style = document.createElement('style');
+      style.textContent = `
+        #difficulty-indicator {
+          position: fixed;
+          bottom: 10px;
+          left: 50%;
+          transform: translateX(-50%);
+          background-color: rgba(0, 0, 0, 0.6);
+          color: white;
+          padding: 5px 12px;
+          border-radius: 15px;
+          font-size: 14px;
+          font-weight: bold;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          z-index: 1000;
+          transition: opacity 0.3s ease;
+          pointer-events: none;
+        }
+        
+        #difficulty-indicator.fade {
+          opacity: 0.3;
+        }
+        
+        #difficulty-indicator:hover {
+          opacity: 1;
+        }
+        
+        #difficulty-indicator-color {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          display: inline-block;
+        }
+      `;
+      document.head.appendChild(style);
+      
+      // Create color dot
+      const colorDot = document.createElement('span');
+      colorDot.id = 'difficulty-indicator-color';
+      difficultyIndicator.appendChild(colorDot);
+      
+      // Create text
+      const text = document.createElement('span');
+      text.id = 'difficulty-indicator-text';
+      difficultyIndicator.appendChild(text);
+      
+      // Add to document
+      document.body.appendChild(difficultyIndicator);
+      
+      // Fade out after 5 seconds
+      setTimeout(() => {
+        difficultyIndicator.classList.add('fade');
+      }, 5000);
+      
+      // Show fully when game state changes or wave changes
+      document.addEventListener('wave-change', () => {
+        difficultyIndicator.classList.remove('fade');
+        setTimeout(() => {
+          difficultyIndicator.classList.add('fade');
+        }, 5000);
+      });
+    }
+    
+    // Update indicator
+    const colorDot = document.getElementById('difficulty-indicator-color');
+    const text = document.getElementById('difficulty-indicator-text');
+    
+    if (colorDot) {
+      colorDot.style.backgroundColor = difficultyColor;
+    }
+    
+    if (text) {
+      text.textContent = difficultyName;
+    }
+    
+    // Show the indicator (remove fade class temporarily)
+    difficultyIndicator.classList.remove('fade');
+    setTimeout(() => {
+      difficultyIndicator.classList.add('fade');
+    }, 5000);
   }
 }

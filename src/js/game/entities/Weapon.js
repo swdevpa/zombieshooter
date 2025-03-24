@@ -51,10 +51,25 @@ export class Weapon {
     
     // Animation state
     this.animationState = {
-      idle: false,
+      idle: true,
       shooting: false,
       reloading: false
     };
+    
+    // Current and target poses for blending
+    this.currentPose = this.createEmptyPose();
+    this.targetPose = this.createEmptyPose();
+    
+    // Animation properties
+    this.idleBobSpeed = 0.8;
+    this.idleBobAmount = 0.003;
+    this.shootRecoilAmount = 0.1;
+    this.shootRecoilDuration = 0.1;
+    this.reloadDuration = 1.0;
+    
+    // Animation timing
+    this.animationTime = 0;
+    this.currentAnimationTime = 0;
 
     // Enhanced reload animation system
     this.reloadAnimationSystem = {
@@ -69,6 +84,28 @@ export class Weapon {
         { name: 'insertMag', duration: 0.3 }, // Insert new magazine
         { name: 'chamberRound', duration: 0.2 } // Chamber round and return to position
       ]
+    };
+
+    // Muzzle flash settings
+    this.muzzleFlashSettings = {
+      duration: 0.1, // Duration in seconds
+      color: 0xffaa00,
+      intensity: 2,
+      radius: 3,
+      particleCount: 10,
+      particleColor: 0xffff00,
+      particleSize: 0.1
+    };
+  }
+  
+  /**
+   * Create an empty pose object
+   */
+  createEmptyPose() {
+    return {
+      position: new THREE.Vector3(),
+      rotation: new THREE.Euler(),
+      scale: new THREE.Vector3(1, 1, 1)
     };
   }
   
@@ -138,23 +175,151 @@ export class Weapon {
   
   /**
    * Update weapon state and animations
-   * Override in specific weapon implementations for custom animations
-   * @param {number} deltaTime - Time since last update
    */
   updateWeaponState(deltaTime) {
-    // Basic weapon idle animation
-    if (this.animationState.idle && !this.animationState.shooting && !this.animationState.reloading) {
-      // Simple idle bobbing animation
-      if (this.mesh) {
-        const time = Date.now() * 0.001;
-        const amplitude = 0.003;
-        this.mesh.position.y = -0.3 + Math.sin(time) * amplitude;
-      }
+    // Update animation time
+    this.animationTime += deltaTime;
+    this.currentAnimationTime += deltaTime;
+    
+    // Update current pose
+    this.updateCurrentPose();
+    
+    // Calculate target pose based on animation state
+    if (this.animationState.shooting) {
+      this.calculateShootPose();
+    } else if (this.animationState.reloading) {
+      this.calculateReloadPose();
+    } else if (this.animationState.idle) {
+      this.calculateIdlePose();
     }
-
+    
+    // Apply blended pose
+    this.applyBlendedPose();
+    
     // Update reload animation if active
     if (this.reloadAnimationSystem.active) {
       this.updateReloadAnimation();
+    }
+  }
+  
+  /**
+   * Update current pose from weapon mesh
+   */
+  updateCurrentPose() {
+    if (!this.mesh) return;
+    
+    this.currentPose.position.copy(this.mesh.position);
+    this.currentPose.rotation.copy(this.mesh.rotation);
+    this.currentPose.scale.copy(this.mesh.scale);
+  }
+  
+  /**
+   * Calculate idle pose
+   */
+  calculateIdlePose() {
+    const time = this.animationTime * this.idleBobSpeed;
+    
+    // Calculate target pose for idle animation
+    this.targetPose.position.y = -0.3 + Math.sin(time) * this.idleBobAmount;
+    this.targetPose.rotation.z = Math.sin(time * 0.5) * this.idleBobAmount * 0.5;
+  }
+  
+  /**
+   * Calculate shooting pose
+   */
+  calculateShootPose() {
+    const progress = Math.min(this.currentAnimationTime / this.shootRecoilDuration, 1);
+    const curve = Math.sin(progress * Math.PI);
+    
+    // Calculate target pose for shooting animation
+    this.targetPose.position.y = -0.3 - curve * this.shootRecoilAmount;
+    this.targetPose.rotation.x = curve * 0.2;
+    
+    // Return to idle after recoil
+    if (progress >= 1) {
+      this.animationState.shooting = false;
+      this.animationState.idle = true;
+    }
+  }
+  
+  /**
+   * Calculate reload pose
+   */
+  calculateReloadPose() {
+    const progress = Math.min(this.currentAnimationTime / this.reloadDuration, 1);
+    const curve = Math.sin(progress * Math.PI);
+    
+    // Calculate target pose for reload animation
+    this.targetPose.position.y = -0.3 - curve * 0.1;
+    this.targetPose.rotation.z = curve * 0.3;
+    
+    // Return to idle after reload
+    if (progress >= 1) {
+      this.animationState.reloading = false;
+      this.animationState.idle = true;
+    }
+  }
+  
+  /**
+   * Apply blended pose to weapon mesh
+   */
+  applyBlendedPose() {
+    if (!this.mesh || !this.game.animationManager) return;
+    
+    // Get blend weights from animation manager
+    const weights = this.game.animationManager.blendWeights;
+    
+    // Blend position
+    this.mesh.position.lerpVectors(
+      this.currentPose.position,
+      this.targetPose.position,
+      weights.target
+    );
+    
+    // Blend rotation
+    this.mesh.quaternion.slerpQuaternions(
+      new THREE.Quaternion().setFromEuler(this.currentPose.rotation),
+      new THREE.Quaternion().setFromEuler(this.targetPose.rotation),
+      weights.target
+    );
+    
+    // Blend scale
+    this.mesh.scale.lerpVectors(
+      this.currentPose.scale,
+      this.targetPose.scale,
+      weights.target
+    );
+  }
+  
+  /**
+   * Start shooting animation
+   */
+  startShootAnimation() {
+    this.animationState.shooting = true;
+    this.animationState.idle = false;
+    this.currentAnimationTime = 0;
+    
+    // Trigger animation event
+    if (this.game.animationManager) {
+      this.game.animationManager.triggerEvent('weaponShoot', {
+        weapon: this
+      });
+    }
+  }
+  
+  /**
+   * Start reload animation
+   */
+  startReloadAnimation() {
+    this.animationState.reloading = true;
+    this.animationState.idle = false;
+    this.currentAnimationTime = 0;
+    
+    // Trigger animation event
+    if (this.game.animationManager) {
+      this.game.animationManager.triggerEvent('weaponReload', {
+        weapon: this
+      });
     }
   }
   
@@ -405,68 +570,15 @@ export class Weapon {
    * @param {boolean} isZombie - Whether hit was on a zombie
    */
   createHitEffect(position, normal, isZombie) {
-    // Create a hit effect at the impact position
-    const hitGroup = new THREE.Group();
-    hitGroup.position.copy(position);
-    
-    // Look at impact direction
-    if (normal) {
-      const lookPoint = new THREE.Vector3().copy(position).add(normal);
-      hitGroup.lookAt(lookPoint);
-    }
-    
-    // Add different effects based on hit type
+    if (!this.game || !this.game.effectsManager) return;
+
     if (isZombie) {
-      // Blood splatter for zombie hits
-      this.createBloodSplatter(hitGroup);
-      
-      // Play zombie hit sound
-      if (this.game && this.game.soundManager) {
-        this.game.soundManager.playSfx('bullet_impact_zombie', { 
-          category: 'weapon',
-          spatial: true,
-          position: position,
-          pooled: true
-        });
-      }
+      // Create blood splatter effect
+      this.game.effectsManager.createBloodSplatterEffect(position, normal);
     } else {
-      // Sparks and debris for environment hits
-      this.createSparkEffect(hitGroup);
-      
-      // Play appropriate impact sound based on material (default to wall)
-      let impactSound = 'bullet_impact_wall';
-      
-      // Simple material detection based on object name
-      // This could be improved with actual material properties
-      if (this.lastHitObject) {
-        const objectName = this.lastHitObject.name.toLowerCase();
-        if (objectName.includes('metal')) {
-          impactSound = 'bullet_impact_metal';
-        }
-      }
-      
-      // Play impact sound
-      if (this.game && this.game.soundManager) {
-        this.game.soundManager.playSfx(impactSound, { 
-          category: 'weapon',
-          spatial: true,
-          position: position,
-          pooled: true
-        });
-      }
+      // Create impact effect based on material
+      this.game.effectsManager.createImpactEffect(position, normal, 'default');
     }
-    
-    // Add to scene
-    this.game.scene.add(hitGroup);
-    
-    // Track for cleanup
-    this.hitMarkers.push({
-      object: hitGroup,
-      time: performance.now(),
-      duration: 2000 // 2 seconds
-    });
-    
-    return hitGroup;
   }
   
   /**
@@ -512,19 +624,25 @@ export class Weapon {
    * Show muzzle flash effect
    */
   showMuzzleFlash() {
-    if (this.muzzleFlash) {
-      this.muzzleFlash.visible = true;
-      
-      // Random flicker effect
-      this.muzzleFlash.intensity = 2 + Math.random() * 1;
-      
-      // Hide after short delay
-      setTimeout(() => {
-        if (this.muzzleFlash) {
-          this.muzzleFlash.visible = false;
-        }
-      }, 50);
-    }
+    if (!this.game || !this.game.effectsManager) return;
+
+    // Get muzzle position
+    const muzzlePosition = this.getMuzzlePosition();
+    
+    // Get muzzle direction
+    const muzzleDirection = new THREE.Vector3(0, 0, -1);
+    this.container.getWorldQuaternion(new THREE.Quaternion()).multiply(
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0))
+    ).multiply(
+      new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), muzzleDirection)
+    );
+
+    // Create muzzle flash effect
+    this.game.effectsManager.createMuzzleFlashEffect(
+      muzzlePosition,
+      muzzleDirection,
+      this.muzzleFlashSettings
+    );
   }
   
   /**
@@ -831,5 +949,30 @@ export class Weapon {
     }
     
     return ammoAdded;
+  }
+
+  /**
+   * Get the current position of the weapon muzzle for muzzle flash effects
+   * @returns {THREE.Vector3} Position of the muzzle in world space
+   */
+  getMuzzlePosition() {
+    // If no container, return default position
+    if (!this.container) {
+      return this.player.container.position.clone().add(new THREE.Vector3(0, 1.6, -1));
+    }
+    
+    // Default muzzle position - override in specific weapon classes for better accuracy
+    const muzzleOffset = new THREE.Vector3(0, 0, -0.5); // Forward from the weapon
+    
+    // Create a vector to hold the world position
+    const muzzlePosition = new THREE.Vector3();
+    
+    // Use the container to calculate the world position of the muzzle
+    muzzlePosition.copy(muzzleOffset);
+    
+    // Transform the local position to world space
+    this.container.localToWorld(muzzlePosition);
+    
+    return muzzlePosition;
   }
 }

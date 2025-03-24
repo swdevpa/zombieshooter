@@ -384,4 +384,15 @@ export class UiManager {
       this.ui.addScreenShake(intensity);
     }
   }
+
+  /**
+   * Update difficulty indicator in UI
+   * @param {string} difficultyName - Name of the current difficulty
+   * @param {string} difficultyColor - Color for the difficulty indicator
+   */
+  updateDifficultyIndicator(difficultyName, difficultyColor) {
+    if (this.ui) {
+      this.ui.updateDifficultyIndicator(difficultyName, difficultyColor);
+    }
+  }
 }

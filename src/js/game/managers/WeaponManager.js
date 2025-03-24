@@ -188,7 +188,22 @@ export class WeaponManager {
    */
   shoot() {
     if (!this.currentWeapon) return false;
-    return this.currentWeapon.shoot();
+    
+    // Try to shoot the weapon
+    const didShoot = this.currentWeapon.shoot();
+    
+    // If shot was successful, add muzzle flash lighting effect
+    if (didShoot && this.game.lightingManager) {
+      // Get the position of the weapon muzzle
+      const muzzlePosition = this.currentWeapon.getMuzzlePosition();
+      
+      if (muzzlePosition) {
+        // Activate muzzle flash light at the position
+        this.game.lightingManager.activateMuzzleFlash(muzzlePosition);
+      }
+    }
+    
+    return didShoot;
   }
   
   /**

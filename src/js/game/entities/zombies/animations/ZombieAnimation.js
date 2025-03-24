@@ -48,6 +48,24 @@ export class ZombieAnimation {
     
     // Auto-return to idle after timed animations
     this.autoReturnStates = ['hit', 'headshot', 'limb_hit', 'attacking'];
+    
+    // Current and target poses for blending
+    this.currentPose = this.createEmptyPose();
+    this.targetPose = this.createEmptyPose();
+  }
+  
+  /**
+   * Create an empty pose object
+   */
+  createEmptyPose() {
+    return {
+      body: { position: new THREE.Vector3(), rotation: new THREE.Euler(), scale: new THREE.Vector3(1, 1, 1) },
+      head: { position: new THREE.Vector3(), rotation: new THREE.Euler(), scale: new THREE.Vector3(1, 1, 1) },
+      leftArm: { position: new THREE.Vector3(), rotation: new THREE.Euler(), scale: new THREE.Vector3(1, 1, 1) },
+      rightArm: { position: new THREE.Vector3(), rotation: new THREE.Euler(), scale: new THREE.Vector3(1, 1, 1) },
+      leftLeg: { position: new THREE.Vector3(), rotation: new THREE.Euler(), scale: new THREE.Vector3(1, 1, 1) },
+      rightLeg: { position: new THREE.Vector3(), rotation: new THREE.Euler(), scale: new THREE.Vector3(1, 1, 1) }
+    };
   }
   
   /**
@@ -86,6 +104,50 @@ export class ZombieAnimation {
       this.originalTransforms.rightLeg.position.copy(this.bodyParts.rightLeg.position);
       this.originalTransforms.rightLeg.rotation.copy(this.bodyParts.rightLeg.rotation);
     }
+    
+    // Initialize current pose with original transforms
+    this.updateCurrentPose();
+  }
+  
+  /**
+   * Update current pose from body parts
+   */
+  updateCurrentPose() {
+    if (this.bodyParts.body) {
+      this.currentPose.body.position.copy(this.bodyParts.body.position);
+      this.currentPose.body.rotation.copy(this.bodyParts.body.rotation);
+      this.currentPose.body.scale.copy(this.bodyParts.body.scale);
+    }
+    
+    if (this.bodyParts.head) {
+      this.currentPose.head.position.copy(this.bodyParts.head.position);
+      this.currentPose.head.rotation.copy(this.bodyParts.head.rotation);
+      this.currentPose.head.scale.copy(this.bodyParts.head.scale);
+    }
+    
+    if (this.bodyParts.leftArm) {
+      this.currentPose.leftArm.position.copy(this.bodyParts.leftArm.position);
+      this.currentPose.leftArm.rotation.copy(this.bodyParts.leftArm.rotation);
+      this.currentPose.leftArm.scale.copy(this.bodyParts.leftArm.scale);
+    }
+    
+    if (this.bodyParts.rightArm) {
+      this.currentPose.rightArm.position.copy(this.bodyParts.rightArm.position);
+      this.currentPose.rightArm.rotation.copy(this.bodyParts.rightArm.rotation);
+      this.currentPose.rightArm.scale.copy(this.bodyParts.rightArm.scale);
+    }
+    
+    if (this.bodyParts.leftLeg) {
+      this.currentPose.leftLeg.position.copy(this.bodyParts.leftLeg.position);
+      this.currentPose.leftLeg.rotation.copy(this.bodyParts.leftLeg.rotation);
+      this.currentPose.leftLeg.scale.copy(this.bodyParts.leftLeg.scale);
+    }
+    
+    if (this.bodyParts.rightLeg) {
+      this.currentPose.rightLeg.position.copy(this.bodyParts.rightLeg.position);
+      this.currentPose.rightLeg.rotation.copy(this.bodyParts.rightLeg.rotation);
+      this.currentPose.rightLeg.scale.copy(this.bodyParts.rightLeg.scale);
+    }
   }
   
   /**
@@ -108,49 +170,247 @@ export class ZombieAnimation {
     // Don't animate if body parts aren't available
     if (!this.bodyParts.body) return;
     
-    // Apply animation based on current state
+    // Update current pose
+    this.updateCurrentPose();
+    
+    // Calculate target pose based on current state
     switch (this.state) {
       case 'idle':
-        this.animateIdle();
+        this.calculateIdlePose();
         break;
       case 'walking':
-        this.animateWalking();
+        this.calculateWalkingPose();
         break;
       case 'attacking':
-        this.animateAttacking();
+        this.calculateAttackingPose();
         break;
       case 'hit':
-        this.animateHit();
+        this.calculateHitPose();
         break;
       case 'headshot':
-        this.animateHeadshot();
+        this.calculateHeadshotPose();
         break;
       case 'limb_hit':
-        this.animateLimbHit();
+        this.calculateLimbHitPose();
         break;
       case 'dying':
-        this.animateDying();
+        this.calculateDyingPose();
         break;
       case 'dead':
-        this.animateDead();
+        this.calculateDeadPose();
         break;
+    }
+    
+    // Apply blended pose to body parts
+    this.applyBlendedPose();
+  }
+  
+  /**
+   * Apply blended pose to body parts
+   */
+  applyBlendedPose() {
+    if (!this.bodyParts.body) return;
+    
+    // Get blend weights from animation manager
+    const weights = this.zombie.game.animationManager.blendWeights;
+    
+    // Apply blended pose to each body part
+    this.applyBlendedTransform(this.bodyParts.body, this.currentPose.body, this.targetPose.body, weights);
+    this.applyBlendedTransform(this.bodyParts.head, this.currentPose.head, this.targetPose.head, weights);
+    this.applyBlendedTransform(this.bodyParts.leftArm, this.currentPose.leftArm, this.targetPose.leftArm, weights);
+    this.applyBlendedTransform(this.bodyParts.rightArm, this.currentPose.rightArm, this.targetPose.rightArm, weights);
+    this.applyBlendedTransform(this.bodyParts.leftLeg, this.currentPose.leftLeg, this.targetPose.leftLeg, weights);
+    this.applyBlendedTransform(this.bodyParts.rightLeg, this.currentPose.rightLeg, this.targetPose.rightLeg, weights);
+  }
+  
+  /**
+   * Apply blended transform to a body part
+   */
+  applyBlendedTransform(part, current, target, weights) {
+    if (!part) return;
+    
+    // Blend position
+    part.position.lerpVectors(
+      current.position,
+      target.position,
+      weights.target
+    );
+    
+    // Blend rotation
+    part.quaternion.slerpQuaternions(
+      new THREE.Quaternion().setFromEuler(current.rotation),
+      new THREE.Quaternion().setFromEuler(target.rotation),
+      weights.target
+    );
+    
+    // Blend scale
+    part.scale.lerpVectors(
+      current.scale,
+      target.scale,
+      weights.target
+    );
+  }
+  
+  /**
+   * Calculate idle pose
+   */
+  calculateIdlePose() {
+    const time = this.animationTime;
+    const swayAmount = 0.05;
+    
+    // Calculate target pose for idle animation
+    this.targetPose.body.rotation.z = this.originalTransforms.body.rotation.z + 
+      Math.sin(time * 0.8) * swayAmount;
+    
+    this.targetPose.head.rotation.z = this.originalTransforms.head.rotation.z + 
+      Math.sin(time * 0.7) * swayAmount * 1.5;
+    
+    this.targetPose.leftArm.rotation.z = this.originalTransforms.leftArm.rotation.z + 
+      Math.sin(time * 0.9) * swayAmount;
+    this.targetPose.rightArm.rotation.z = this.originalTransforms.rightArm.rotation.z + 
+      Math.sin(time * 0.9 + 0.5) * swayAmount;
+  }
+  
+  /**
+   * Calculate walking pose
+   */
+  calculateWalkingPose() {
+    const time = this.animationTime;
+    const walkCycle = time * this.walkCycleSpeed * Math.PI;
+    const legAmount = 0.4;
+    const armAmount = 0.3;
+    
+    // Calculate target pose for walking animation
+    this.targetPose.body.rotation.z = this.originalTransforms.body.rotation.z + 
+      Math.sin(walkCycle * 2) * 0.05;
+    
+    this.targetPose.head.rotation.z = this.originalTransforms.head.rotation.z + 
+      Math.sin(walkCycle * 2) * 0.1;
+    
+    this.targetPose.leftLeg.rotation.x = Math.sin(walkCycle) * legAmount;
+    this.targetPose.rightLeg.rotation.x = Math.sin(walkCycle + Math.PI) * legAmount;
+    
+    this.targetPose.leftArm.rotation.x = Math.sin(walkCycle + Math.PI) * armAmount;
+    this.targetPose.rightArm.rotation.x = Math.sin(walkCycle) * armAmount;
+  }
+  
+  /**
+   * Calculate attacking pose
+   */
+  calculateAttackingPose() {
+    const progress = Math.min(this.currentAnimationTime / this.attackDuration, 1);
+    const returnPhase = progress > 0.6;
+    
+    const attackProgress = returnPhase ? 
+      1 - ((progress - 0.6) / 0.4) :
+      progress / 0.6;
+    
+    // Calculate target pose for attack animation
+    this.targetPose.body.rotation.x = attackProgress * 0.2;
+    this.targetPose.head.rotation.x = attackProgress * -0.3;
+    
+    this.targetPose.leftArm.rotation.x = this.originalTransforms.leftArm.rotation.x + 
+      attackProgress * 0.8;
+    this.targetPose.rightArm.rotation.x = this.originalTransforms.rightArm.rotation.x + 
+      attackProgress * 0.8;
+  }
+  
+  /**
+   * Calculate hit pose
+   */
+  calculateHitPose() {
+    const progress = Math.min(this.animationStateTime / this.damageDuration, 1);
+    const curve = Math.sin(progress * Math.PI);
+    
+    // Calculate target pose for hit animation
+    this.targetPose.body.rotation.x = curve * 0.2;
+    this.targetPose.body.rotation.z = curve * 0.15;
+    
+    this.targetPose.head.rotation.x = curve * -0.3;
+    
+    this.targetPose.leftArm.rotation.z = this.originalTransforms.leftArm.rotation.z + curve * 0.3;
+    this.targetPose.rightArm.rotation.z = this.originalTransforms.rightArm.rotation.z - curve * 0.3;
+  }
+  
+  /**
+   * Calculate headshot pose
+   */
+  calculateHeadshotPose() {
+    const progress = Math.min(this.animationStateTime / this.headShotDuration, 1);
+    const curve = Math.sin(progress * Math.PI);
+    
+    // Calculate target pose for headshot animation
+    this.targetPose.head.rotation.z = curve * 0.7;
+    this.targetPose.head.rotation.x = curve * 0.5;
+    
+    const bodyCurve = Math.sin(Math.max(0, progress - 0.1) * Math.PI);
+    this.targetPose.body.rotation.z = bodyCurve * 0.3;
+    this.targetPose.body.rotation.x = bodyCurve * 0.2;
+    
+    this.targetPose.leftArm.rotation.x = this.originalTransforms.leftArm.rotation.x + curve * 0.5;
+    this.targetPose.rightArm.rotation.x = this.originalTransforms.rightArm.rotation.x + curve * 0.4;
+  }
+  
+  /**
+   * Calculate limb hit pose
+   */
+  calculateLimbHitPose() {
+    const progress = Math.min(this.animationStateTime / this.limbHitDuration, 1);
+    const curve = Math.sin(progress * Math.PI);
+    const isLeftSide = Math.floor(this.animationTime * 7) % 2 === 0;
+    
+    // Calculate target pose for limb hit animation
+    if (isLeftSide) {
+      this.targetPose.leftArm.rotation.z = this.originalTransforms.leftArm.rotation.z + curve * 0.6;
+      this.targetPose.leftArm.rotation.x = this.originalTransforms.leftArm.rotation.x + curve * 0.3;
+      
+      this.targetPose.leftLeg.rotation.x = this.originalTransforms.leftLeg.rotation.x + curve * 0.4;
+      
+      this.targetPose.body.rotation.z = curve * -0.15;
+    } else {
+      this.targetPose.rightArm.rotation.z = this.originalTransforms.rightArm.rotation.z - curve * 0.6;
+      this.targetPose.rightArm.rotation.x = this.originalTransforms.rightArm.rotation.x + curve * 0.3;
+      
+      this.targetPose.rightLeg.rotation.x = this.originalTransforms.rightLeg.rotation.x + curve * 0.4;
+      
+      this.targetPose.body.rotation.z = curve * 0.15;
     }
   }
   
   /**
-   * Get animation duration for a specific state
-   * @param {string} state - Animation state
-   * @returns {number} Duration in seconds
+   * Calculate dying pose
    */
-  getStateDuration(state) {
-    switch (state) {
-      case 'attacking': return this.attackDuration;
-      case 'hit': return this.damageDuration;
-      case 'headshot': return this.headShotDuration;
-      case 'limb_hit': return this.limbHitDuration;
-      case 'dying': return this.deathDuration;
-      default: return 0;
-    }
+  calculateDyingPose() {
+    const progress = Math.min(this.currentAnimationTime / this.deathDuration, 1);
+    
+    // Calculate target pose for dying animation
+    this.targetPose.body.rotation.x = progress * 1.5;
+    this.targetPose.body.position.y = this.originalTransforms.body.position.y - progress * 0.8;
+    
+    this.targetPose.head.rotation.x = progress * 0.7;
+    
+    this.targetPose.leftArm.rotation.z = this.originalTransforms.leftArm.rotation.z - progress * 0.5;
+    this.targetPose.rightArm.rotation.z = this.originalTransforms.rightArm.rotation.z + progress * 0.5;
+    
+    this.targetPose.leftLeg.rotation.x = -progress * 0.8;
+    this.targetPose.rightLeg.rotation.x = -progress * 0.6;
+  }
+  
+  /**
+   * Calculate dead pose
+   */
+  calculateDeadPose() {
+    // Set final pose for dead state
+    this.targetPose.body.rotation.x = 1.5;
+    this.targetPose.body.position.y = this.originalTransforms.body.position.y - 0.8;
+    
+    this.targetPose.head.rotation.x = 0.7;
+    
+    this.targetPose.leftArm.rotation.z = this.originalTransforms.leftArm.rotation.z - 0.5;
+    this.targetPose.rightArm.rotation.z = this.originalTransforms.rightArm.rotation.z + 0.5;
+    
+    this.targetPose.leftLeg.rotation.x = -0.8;
+    this.targetPose.rightLeg.rotation.x = -0.6;
   }
   
   /**
@@ -169,264 +429,30 @@ export class ZombieAnimation {
     // Reset state timer
     this.animationStateTime = 0;
     this.animationComplete = false;
-  }
-  
-  /**
-   * Idle animation - subtle swaying motion
-   */
-  animateIdle() {
-    if (!this.hasRequiredParts()) return;
     
-    const time = this.animationTime;
-    const swayAmount = 0.05;
-    
-    // Subtle body sway
-    this.bodyParts.body.rotation.z = this.originalTransforms.body.rotation.z + 
-      Math.sin(time * 0.8) * swayAmount;
-    
-    // Head movement
-    this.bodyParts.head.rotation.z = this.originalTransforms.head.rotation.z + 
-      Math.sin(time * 0.7) * swayAmount * 1.5;
-    
-    // Arms hanging and swaying slightly
-    this.bodyParts.leftArm.rotation.z = this.originalTransforms.leftArm.rotation.z + 
-      Math.sin(time * 0.9) * swayAmount;
-    this.bodyParts.rightArm.rotation.z = this.originalTransforms.rightArm.rotation.z + 
-      Math.sin(time * 0.9 + 0.5) * swayAmount;
-  }
-  
-  /**
-   * Walking animation - alternating leg movements with arm swinging
-   */
-  animateWalking() {
-    if (!this.hasRequiredParts()) return;
-    
-    const time = this.animationTime;
-    const walkCycle = time * this.walkCycleSpeed * Math.PI;
-    const legAmount = 0.4; // Leg rotation amount
-    const armAmount = 0.3; // Arm swing amount
-    
-    // Body tilts slightly with each step
-    this.bodyParts.body.rotation.z = this.originalTransforms.body.rotation.z + 
-      Math.sin(walkCycle * 2) * 0.05;
-    
-    // Head bobs slightly
-    this.bodyParts.head.rotation.z = this.originalTransforms.head.rotation.z + 
-      Math.sin(walkCycle * 2) * 0.1;
-    
-    // Legs alternate forward and backward
-    this.bodyParts.leftLeg.rotation.x = Math.sin(walkCycle) * legAmount;
-    this.bodyParts.rightLeg.rotation.x = Math.sin(walkCycle + Math.PI) * legAmount;
-    
-    // Arms swing opposite to legs
-    this.bodyParts.leftArm.rotation.x = Math.sin(walkCycle + Math.PI) * armAmount;
-    this.bodyParts.rightArm.rotation.x = Math.sin(walkCycle) * armAmount;
-  }
-  
-  /**
-   * Attacking animation - lunging forward with arms outstretched
-   */
-  animateAttacking() {
-    if (!this.hasRequiredParts()) return;
-    
-    const progress = Math.min(this.currentAnimationTime / this.attackDuration, 1);
-    const returnPhase = progress > 0.6; // Return to normal pose after 60% of animation
-    
-    // Attack progress from 0 to 1, then back to 0
-    const attackProgress = returnPhase ? 
-      1 - ((progress - 0.6) / 0.4) : // Return phase (0.6 to 1.0) mapped to 1.0 to 0
-      progress / 0.6; // Attack phase (0 to 0.6) mapped to 0 to 1.0
-    
-    // Lunge forward
-    this.bodyParts.body.rotation.x = attackProgress * 0.2;
-    
-    // Head looks up slightly during attack
-    this.bodyParts.head.rotation.x = attackProgress * -0.3;
-    
-    // Arms reach forward during attack
-    this.bodyParts.leftArm.rotation.x = this.originalTransforms.leftArm.rotation.x + 
-      attackProgress * 0.8;
-    this.bodyParts.rightArm.rotation.x = this.originalTransforms.rightArm.rotation.x + 
-      attackProgress * 0.8;
-    
-    // Complete attack animation cycle
-    if (progress >= 1) {
-      this.setState('idle');
+    // Trigger state change event
+    if (this.zombie.game.animationManager) {
+      this.zombie.game.animationManager.triggerEvent('zombieStateChange', {
+        zombie: this.zombie,
+        state: newState
+      });
     }
   }
   
   /**
-   * Animate standard hit (torso hit)
+   * Get animation duration for a specific state
+   * @param {string} state - Animation state
+   * @returns {number} Duration in seconds
    */
-  animateHit() {
-    if (!this.bodyParts.body || !this.bodyParts.head) return;
-    
-    // Calculate animation progress (0 to 1)
-    const progress = Math.min(this.animationStateTime / this.damageDuration, 1);
-    
-    // Animation curve for more realistic movement
-    const curve = Math.sin(progress * Math.PI);
-    
-    // Body reacts to impact
-    this.bodyParts.body.rotation.x = curve * 0.2; // Bend back slightly
-    this.bodyParts.body.rotation.z = curve * 0.15; // Twist sideways
-    
-    // Head reacts to body movement
-    this.bodyParts.head.rotation.x = curve * -0.3; // Head bend forward in reaction
-    
-    // Arms move outward
-    if (this.bodyParts.leftArm) {
-      this.bodyParts.leftArm.rotation.z = this.originalTransforms.leftArm.rotation.z + curve * 0.3;
+  getStateDuration(state) {
+    switch (state) {
+      case 'attacking': return this.attackDuration;
+      case 'hit': return this.damageDuration;
+      case 'headshot': return this.headShotDuration;
+      case 'limb_hit': return this.limbHitDuration;
+      case 'dying': return this.deathDuration;
+      default: return 0;
     }
-    
-    if (this.bodyParts.rightArm) {
-      this.bodyParts.rightArm.rotation.z = this.originalTransforms.rightArm.rotation.z - curve * 0.3;
-    }
-  }
-  
-  /**
-   * Animate headshot reaction
-   */
-  animateHeadshot() {
-    if (!this.bodyParts.head) return;
-    
-    // Calculate animation progress (0 to 1)
-    const progress = Math.min(this.animationStateTime / this.headShotDuration, 1);
-    
-    // Animation curve for more realistic movement
-    const curve = Math.sin(progress * Math.PI);
-    
-    // Head reacts violently to headshot
-    this.bodyParts.head.rotation.z = curve * 0.7; // Head snaps sideways
-    this.bodyParts.head.rotation.x = curve * 0.5; // Head snaps back
-    
-    // Body follows head movement with delay
-    if (this.bodyParts.body) {
-      const bodyCurve = Math.sin(Math.max(0, progress - 0.1) * Math.PI);
-      this.bodyParts.body.rotation.z = bodyCurve * 0.3;
-      this.bodyParts.body.rotation.x = bodyCurve * 0.2;
-    }
-    
-    // Arms move up in reaction
-    if (this.bodyParts.leftArm) {
-      this.bodyParts.leftArm.rotation.x = this.originalTransforms.leftArm.rotation.x + curve * 0.5;
-    }
-    
-    if (this.bodyParts.rightArm) {
-      this.bodyParts.rightArm.rotation.x = this.originalTransforms.rightArm.rotation.x + curve * 0.4;
-    }
-  }
-  
-  /**
-   * Animate limb hit reaction
-   */
-  animateLimbHit() {
-    // Calculate animation progress (0 to 1)
-    const progress = Math.min(this.animationStateTime / this.limbHitDuration, 1);
-    
-    // Animation curve for more realistic movement
-    const curve = Math.sin(progress * Math.PI);
-    
-    // Random choice between left and right limb (based on animation time)
-    const isLeftSide = Math.floor(this.animationTime * 7) % 2 === 0;
-    
-    if (isLeftSide) {
-      // Left side hit
-      if (this.bodyParts.leftArm) {
-        this.bodyParts.leftArm.rotation.z = this.originalTransforms.leftArm.rotation.z + curve * 0.6;
-        this.bodyParts.leftArm.rotation.x = this.originalTransforms.leftArm.rotation.x + curve * 0.3;
-      }
-      
-      if (this.bodyParts.leftLeg) {
-        this.bodyParts.leftLeg.rotation.x = this.originalTransforms.leftLeg.rotation.x + curve * 0.4;
-      }
-      
-      // Body leans slightly away from hit
-      if (this.bodyParts.body) {
-        this.bodyParts.body.rotation.z = curve * -0.15;
-      }
-    } else {
-      // Right side hit
-      if (this.bodyParts.rightArm) {
-        this.bodyParts.rightArm.rotation.z = this.originalTransforms.rightArm.rotation.z - curve * 0.6;
-        this.bodyParts.rightArm.rotation.x = this.originalTransforms.rightArm.rotation.x + curve * 0.3;
-      }
-      
-      if (this.bodyParts.rightLeg) {
-        this.bodyParts.rightLeg.rotation.x = this.originalTransforms.rightLeg.rotation.x + curve * 0.4;
-      }
-      
-      // Body leans slightly away from hit
-      if (this.bodyParts.body) {
-        this.bodyParts.body.rotation.z = curve * 0.15;
-      }
-    }
-  }
-  
-  /**
-   * Damaged animation - flinching back
-   */
-  animateDamaged(deltaTime) {
-    if (!this.hasRequiredParts()) return;
-    
-    const progress = Math.min(this.currentAnimationTime / this.damageDuration, 1);
-    
-    // Flinch backward
-    this.bodyParts.body.rotation.x = -progress * 0.2 * Math.sin(progress * Math.PI);
-    
-    // Head jerks back
-    this.bodyParts.head.rotation.x = -progress * 0.4 * Math.sin(progress * Math.PI);
-    
-    // Arms raise slightly in reaction
-    this.bodyParts.leftArm.rotation.z = this.originalTransforms.leftArm.rotation.z - 
-      progress * 0.3 * Math.sin(progress * Math.PI);
-    this.bodyParts.rightArm.rotation.z = this.originalTransforms.rightArm.rotation.z - 
-      progress * 0.3 * Math.sin(progress * Math.PI);
-    
-    // Return to previous state when complete
-    if (progress >= 1) {
-      this.setState(this.zombie.isMoving ? 'walking' : 'idle');
-    }
-  }
-  
-  /**
-   * Dying animation - collapsing to the ground
-   */
-  animateDying() {
-    if (!this.hasRequiredParts()) return;
-    
-    const progress = Math.min(this.currentAnimationTime / this.deathDuration, 1);
-    
-    // Body falls forward
-    this.bodyParts.body.rotation.x = progress * 1.5;
-    this.bodyParts.body.position.y = this.originalTransforms.body.position.y - 
-      progress * 0.8;
-    
-    // Head slumps forward
-    this.bodyParts.head.rotation.x = progress * 0.7;
-    
-    // Arms go limp
-    this.bodyParts.leftArm.rotation.z = this.originalTransforms.leftArm.rotation.z - 
-      progress * 0.5;
-    this.bodyParts.rightArm.rotation.z = this.originalTransforms.rightArm.rotation.z + 
-      progress * 0.5;
-    
-    // Legs collapse
-    this.bodyParts.leftLeg.rotation.x = -progress * 0.8;
-    this.bodyParts.rightLeg.rotation.x = -progress * 0.6;
-    
-    // Transition to dead state when complete
-    if (progress >= 1) {
-      this.setState('dead');
-    }
-  }
-  
-  /**
-   * Dead animation - static pose with subtle movement from wind
-   */
-  animateDead() {
-    // No additional animation needed, the body stays in final death pose
-    // Could add subtle wind effect here if desired
   }
   
   /**

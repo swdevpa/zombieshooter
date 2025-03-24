@@ -26,6 +26,13 @@ import { NavigationGrid } from './world/NavigationGrid.js';
 import { DamageManager } from './managers/DamageManager.js';
 import { GameStateManager } from './managers/GameStateManager.js';
 import { ScoreManager } from './managers/ScoreManager.js';
+import { RenderManager } from './managers/RenderManager.js';
+import { EffectsManager } from './managers/EffectsManager.js';
+import { AnimationManager } from './managers/AnimationManager.js';
+import { LightingManager } from './managers/LightingManager.js';
+import { DifficultyManager } from './managers/DifficultyManager.js';
+import { TutorialManager } from './managers/TutorialManager.js';
+import { PerformanceOptimizer } from '../utils/PerformanceOptimizer.js';
 
 export class Game {
   constructor(container, assetLoader) {
@@ -64,9 +71,10 @@ export class Game {
       targetFPS: 60,
       frameLimitDelta: 1000 / 60, // ms per frame at 60 FPS
       cullingEnabled: true,
-      qualityLevel: 'high', // low, medium, high
+      qualityLevel: 'high', // low, medium, high, ultra
       postProcessing: true,
       shadows: true,
+      adaptiveQuality: true  // New setting for adaptive quality
     };
 
     // Mouse look controls
@@ -98,6 +106,9 @@ export class Game {
       value: 0,
       lastStep: 0,
     };
+
+    // Initialize animation manager
+    this.animationManager = new AnimationManager();
 
     // Initialize Three.js components
     this.initThree();
@@ -180,52 +191,62 @@ export class Game {
   }
 
   initManagers() {
-    // Initialize UI manager
-    this.uiManager = new UiManager(this);
-    this.uiManager.init();
-
-    // Initialize input manager
+    // Create input manager
     this.inputManager = new InputManager(this);
-
-    // Initialize level manager
-    this.levelManager = new LevelManager(this);
-    this.levelManager.init();
-
-    // Initialize culling manager
-    this.cullingManager = new CullingManager(this);
-    this.cullingManager.init();
     
-    // Initialize LOD manager
-    this.lodManager = new LODManager(this);
-    this.lodManager.init();
-
-    // Initialize zombie manager
-    this.zombieManager = new ZombieManager(this);
-    
-    // Initialize entity manager
-    this.entityManager = new EntityManager(this);
-    this.entityManager.init();
-    
-    // Initialize damage manager
-    this.damageManager = new DamageManager(this, this.assetLoader);
-    
-    // Initialize weapon manager
-    this.weaponManager = new WeaponManager(this);
-    
-    // Initialize scene manager
+    // Create scene manager
     this.sceneManager = new SceneManager(this);
     
-    // Initialize city manager
+    // Create city manager
     this.cityManager = new CityManager(this);
     
-    // Initialize sound manager
-    this.soundManager = new SoundManager(this, this.assetLoader);
-    
-    // Initialize game state manager
+    // Create game state manager
     this.gameStateManager = new GameStateManager(this);
     
-    // Initialize score manager
+    // Create entity manager
+    this.entityManager = new EntityManager(this);
+    
+    // Create UI manager
+    this.uiManager = new UiManager(this);
+    
+    // Create level manager
+    this.levelManager = new LevelManager(this);
+    
+    // Create culling manager
+    this.cullingManager = new CullingManager(this);
+    
+    // Create LOD manager
+    this.lodManager = new LODManager(this);
+    
+    // Create weapon manager
+    this.weaponManager = new WeaponManager(this);
+    
+    // Create damage manager
+    this.damageManager = new DamageManager(this);
+    
+    // Create score manager
     this.scoreManager = new ScoreManager(this);
+    
+    // Create sound manager
+    this.soundManager = new SoundManager(this);
+    
+    // Create render manager
+    this.renderManager = new RenderManager(this);
+    
+    // Create effects manager for object pooling of visual effects
+    this.effectsManager = new EffectsManager(this, this.assetLoader);
+    
+    // Create lighting manager for advanced lighting effects
+    this.lightingManager = new LightingManager(this);
+    
+    // Create difficulty manager
+    this.difficultyManager = new DifficultyManager(this);
+    
+    // Create tutorial manager
+    this.tutorialManager = new TutorialManager(this);
+    
+    // Initialize performance optimizer
+    this.performanceOptimizer = new PerformanceOptimizer(this);
   }
 
   setupEvents() {
@@ -521,6 +542,39 @@ export class Game {
       this.atmosphericEffects.init();
       this.atmosphericEffects.setPreset('dusk');
       
+      // Initialize lighting manager
+      this.lightingManager = new LightingManager(this);
+      this.lightingManager.init();
+      
+      // Set up building lights - get all buildings from the city
+      if (this.lightingManager && cityContainer) {
+        // Find building objects in the city container
+        const buildings = [];
+        cityContainer.traverse((object) => {
+          if (object.isMesh && object.name.toLowerCase().includes('building')) {
+            buildings.push(object);
+          }
+        });
+        
+        // Setup emergency lights on buildings
+        if (buildings.length > 0) {
+          this.lightingManager.setupBuildingLights(buildings);
+        }
+        
+        // Find street lights in the city container
+        const streetLights = [];
+        cityContainer.traverse((object) => {
+          if (object.isMesh && (object.name.toLowerCase().includes('light') || object.name.toLowerCase().includes('lamp'))) {
+            streetLights.push(object);
+          }
+        });
+        
+        // Setup street lights
+        if (streetLights.length > 0) {
+          this.lightingManager.setupStreetLights(streetLights);
+        }
+      }
+      
       // Create navigation grid for the city
       this.navigationGrid = new NavigationGrid(this);
       this.navigationGrid.generate(this.city);
@@ -545,8 +599,15 @@ export class Game {
       // Setup culling
       this.setupFrustumCulling();
 
-      // Apply quality settings
+      // Apply initial quality settings
       this.applyQualitySettings();
+      
+      // Auto-detect optimal settings if enabled
+      if (this.settings.adaptiveQuality && this.performanceOptimizer) {
+        setTimeout(() => {
+          this.performanceOptimizer.runBenchmark();
+        }, 3000); // Run benchmark after 3 seconds to give time for scene to load
+      }
 
       console.log('Game initialized');
       
@@ -586,6 +647,29 @@ export class Game {
         this.ui.setupDebugUI();
       }
 
+      // Initialize managers
+      if (this.inputManager) this.inputManager.init();
+      if (this.sceneManager) this.sceneManager.init();
+      if (this.cityManager) this.cityManager.init();
+      if (this.gameStateManager) this.gameStateManager.init();
+      if (this.entityManager) this.entityManager.init();
+      if (this.uiManager) this.uiManager.init();
+      if (this.levelManager) this.levelManager.init();
+      if (this.cullingManager) this.cullingManager.init();
+      if (this.lodManager) this.lodManager.init();
+      if (this.weaponManager) this.weaponManager.init();
+      if (this.damageManager) this.damageManager.init();
+      if (this.scoreManager) this.scoreManager.init();
+      if (this.soundManager) this.soundManager.init();
+      if (this.renderManager) this.renderManager.init();
+      if (this.effectsManager) this.effectsManager.init();
+      if (this.lightingManager) this.lightingManager.init();
+      if (this.difficultyManager) this.difficultyManager.init();
+      if (this.tutorialManager) this.tutorialManager.init();
+
+      // Initialize effects manager
+      if (this.effectsManager) this.effectsManager.init();
+
       // Return for chaining
       return this;
     } catch (error) {
@@ -624,46 +708,49 @@ export class Game {
     console.log('Collidable objects marked in city');
   }
 
-  start() {
+  /**
+   * Start a new game
+   */
+  start(tutorialMode = false) {
+    console.log('Starting game...');
+    
+    // Reset game state
     this.running = true;
     this.paused = false;
     this.gameOver = false;
-    this.score = 0;
-
-    // Reset game state
-    this.gameState = {
-      status: 'playing',
-      zombiesSpawned: 0,
-      zombiesKilled: 0,
-      wave: 1,
-      score: 0,
-      difficulty: this.gameState?.difficulty || 'normal'
-    };
-
-    // Reset player
-    if (this.player) {
-      this.player.reset();
-    }
-
-    // Reset score for new game
+    
+    // Reset score
     if (this.scoreManager) {
       this.scoreManager.resetScore();
     }
-
-    // Start zombie spawning
-    this.zombieManager.startSpawning();
     
-    // Spawn ammo pickups
-    if (this.entityManager) {
-      this.entityManager.spawnAmmoPickups(8);
+    // Create a new level if needed
+    if (this.levelManager) {
+      this.levelManager.resetLevel();
     }
-
-    // Reset performance monitoring
-    this.performanceMonitor.reset();
-
-    // Start game loop
-    this.lastTime = performance.now();
-    this.animate();
+    
+    // Initialize player
+    this.initializePlayer();
+    
+    // Update UI
+    if (this.uiManager) {
+      this.uiManager.updateGameplayUI(true);
+    }
+    
+    // Start zombie spawning if not in tutorial mode
+    if (this.zombieManager && !tutorialMode) {
+      this.zombieManager.startSpawning();
+    } else if (this.zombieManager && tutorialMode) {
+      // In tutorial mode, we'll start with just a few zombies for practice
+      this.zombieManager.setTutorialMode(true);
+    }
+    
+    // Update difficulty UI
+    if (this.difficultyManager) {
+      this.difficultyManager.updateUI();
+    }
+    
+    console.log('Game started successfully' + (tutorialMode ? ' in tutorial mode' : ''));
   }
 
   onResize() {
@@ -767,164 +854,213 @@ export class Game {
   }
 
   update(time) {
-    // Nicht aktualisieren, wenn das Spiel pausiert oder beendet ist
-    if (this.paused || this.gameOver) return;
+    // Calculate delta time
+    const now = performance.now();
+    const deltaTime = Math.min((now - this.frameTiming.lastFrameTime) / 1000, 0.1); // Cap at 100ms to prevent large jumps
+    this.frameTiming.lastFrameTime = now;
 
-    // Delta-Zeit berechnen
-    const rawDeltaTime = this.clock.getDelta();
+    // Store raw delta for calculations that need it (like FPS counter)
+    const rawDeltaTime = deltaTime;
 
-    // Framerate-Begrenzung anwenden
-    if (this.settings.limitFPS) {
-      // Minimale Zeit, die zwischen Frames vergehen sollte
-      const minDeltaTime = 1 / this.settings.targetFPS;
-      
-      // Warten, wenn wir zu schnell sind
-      if (rawDeltaTime < minDeltaTime) {
-        const waitTime = (minDeltaTime - rawDeltaTime) * 1000;
-        // Hier könnten wir einen setTimeout verwenden, aber das würde den Game-Loop unterbrechen
-        // Stattdessen stellen wir einfach fest, dass wir zu schnell sind
-        this.performanceMonitor.logFrameLimitDelay(waitTime);
-        return; // Skip diesen Frame
-      }
+    // Update FPS counter
+    this.updateFPS(rawDeltaTime);
+
+    // Update performance monitor
+    this.performanceMonitor.update(deltaTime, this.fpsCounter.value);
+
+    // Skip update if game is paused or over
+    if (!this.running || this.paused || this.gameOver) {
+      requestAnimationFrame(this.animate.bind(this));
+      return;
     }
 
-    // Maximal erlaubte Delta-Zeit, um Probleme mit großen Lücken zu vermeiden (z.B. nach Tab-Wechsel)
-    const deltaTime = Math.min(rawDeltaTime, 0.1);
-    
-    // Zeit für die FPS-Berechnung aktualisieren
-    this.updateFPS(deltaTime);
-
-    // Performance-Monitoring starten
-    this.performanceMonitor.startFrame();
-
-    // Eingaben verarbeiten
-    this.performanceMonitor.startSection('input');
-    if (this.inputManager) {
-      this.inputManager.update(deltaTime);
-    }
-    this.performanceMonitor.endSection('input');
-
-    // Physik und Bewegung aktualisieren
-    this.performanceMonitor.startSection('physics');
+    // Update player 
     if (this.player) {
       this.player.update(deltaTime);
     }
-    this.performanceMonitor.endSection('physics');
 
-    // Maus-Kamera-Bewegung aktualisieren
-    this.performanceMonitor.startSection('camera');
-    this.updateMouseLook(deltaTime);
-    this.updateCameraRecoil(deltaTime);
-    this.updateCameraHeadBob(deltaTime);
-    this.updateCamera();
-    this.performanceMonitor.endSection('camera');
-    
-    // LOD-System aktualisieren
-    this.performanceMonitor.startSection('lod');
-    if (this.lodManager) {
-      this.lodManager.update(deltaTime);
-    }
-    this.performanceMonitor.endSection('lod');
-
-    // Culling aktualisieren (nach LOD, um von aktuellen LOD-Leveln zu profitieren)
-    this.performanceMonitor.startSection('culling');
-    if (this.cullingManager) {
-      this.cullingManager.update(this.camera);
-    }
-    this.performanceMonitor.endSection('culling');
-    
-    // Entities aktualisieren
-    this.performanceMonitor.startSection('entities');
-    if (this.entityManager) {
-      this.entityManager.update(deltaTime);
-    }
-    this.performanceMonitor.endSection('entities');
-    
-    // Zombies aktualisieren
-    this.performanceMonitor.startSection('zombies');
+    // Update other game systems
     if (this.zombieManager) {
       this.zombieManager.update(deltaTime);
     }
-    this.performanceMonitor.endSection('zombies');
-    
-    // Waffen aktualisieren
-    this.performanceMonitor.startSection('weapons');
-    if (this.weaponManager) {
-      this.weaponManager.update(deltaTime);
+
+    if (this.inputManager) {
+      this.inputManager.update(deltaTime);
     }
-    this.performanceMonitor.endSection('weapons');
-    
-    // UI aktualisieren
-    this.performanceMonitor.startSection('ui');
+
+    // Update mouse look
+    this.updateMouseLook(deltaTime);
+
+    // Update recoil effect
+    this.updateCameraRecoil(deltaTime);
+
+    // Update head bobbing
+    this.updateCameraHeadBob(deltaTime);
+
+    // Update camera position
+    this.updateCamera();
+
+    // Update UI through UI manager
     if (this.uiManager) {
       this.uiManager.update(deltaTime);
     }
-    this.performanceMonitor.endSection('ui');
     
-    // Physik aktualisieren
-    this.performanceMonitor.startSection('physics');
-    if (this.physicsManager) {
-      this.physicsManager.update(deltaTime);
+    // Update texturing system
+    if (this.texturingSystem) {
+      this.texturingSystem.update(deltaTime);
     }
-    this.performanceMonitor.endSection('physics');
-    
-    // Nachladen
-    this.performanceMonitor.startSection('reload');
-    if (this.inputManager && this.inputManager.isReloadPressed() && this.weaponManager) {
-      this.weaponManager.reload();
+
+    // Update weapon manager
+    if (this.weaponManager) {
+      this.weaponManager.update(deltaTime);
     }
-    this.performanceMonitor.endSection('reload');
-    
-    // Schiessen
-    this.performanceMonitor.startSection('shooting');
-    if (this.inputManager && this.inputManager.isShootPressed() && this.weaponManager) {
-      this.weaponManager.shoot();
+
+    // Update sound manager
+    if (this.soundManager) {
+      this.soundManager.update(deltaTime);
     }
-    this.performanceMonitor.endSection('shooting');
+
+    // Update game state manager
+    if (this.gameStateManager) {
+      this.gameStateManager.update(deltaTime);
+    }
+
+    // Update culling system
+    if (this.cullingManager && this.settings.cullingEnabled) {
+      this.cullingManager.update(deltaTime, this.camera);
+    }
+
+    // Update LOD system
+    if (this.lodManager) {
+      this.lodManager.update(deltaTime, this.camera);
+    }
+
+    // Update entity manager
+    if (this.entityManager) {
+      this.entityManager.update(deltaTime);
+    }
+
+    // Update effects manager
+    if (this.effectsManager) {
+      this.effectsManager.update(deltaTime);
+    }
+
+    // Update atmospheric effects
+    if (this.atmosphericEffects) {
+      this.atmosphericEffects.update(deltaTime);
+    }
+
+    // Update lighting effects
+    if (this.lightingManager) {
+      this.lightingManager.update(deltaTime);
+    }
     
-    // Leistungsüberwachung beenden
-    this.performanceMonitor.endFrame();
-    
-    // Nächsten Frame anfordern
+    // Update tutorial manager
+    if (this.tutorialManager) {
+      this.tutorialManager.update(deltaTime);
+    }
+
+    // Update performance optimizer
+    if (this.performanceOptimizer) {
+      this.performanceOptimizer.update(deltaTime);
+    }
+
+    // Continue animation loop
     requestAnimationFrame(this.animate.bind(this));
   }
 
   animate() {
-    // Schedule next frame
-    this.frameTiming.frameId = requestAnimationFrame(this.animate.bind(this));
-
+    // Request next frame
+    if (this.running) {
+      this.frameTiming.frameId = requestAnimationFrame(this.animate.bind(this));
+    }
+    
     // Get current time
     const now = performance.now();
-
-    // Calculate deltaTime in seconds (cap at 100ms to avoid huge jumps)
-    const deltaTime = Math.min((now - this.lastTime) / 1000, 0.1);
-    this.lastTime = now;
-
-    // Store actual frame timing for performance monitor
-    this.frameTiming.deltaTime = deltaTime;
-
-    // Check if we need to limit FPS
-    if (this.settings.limitFPS) {
-      const frameTime = now - this.frameTiming.frameStartTime;
-
-      // If frame processed too quickly, delay to maintain target FPS
-      if (frameTime < this.frameTiming.frameTimeTarget) {
-        // Skip rendering this frame and wait until next one
-        return;
+    
+    // Calculate delta time (capped to avoid huge jumps)
+    const rawDeltaTime = this.clock.getDelta();
+    let deltaTime = Math.min(rawDeltaTime, 0.1); // Cap to 100ms
+    
+    // Track frame start time
+    this.frameTiming.frameStartTime = now;
+    
+    // If the game is not running, only update minimal components
+    if (!this.running || this.paused) {
+      // Still update sound manager even when paused for UI sounds
+      if (this.soundManager) {
+        this.soundManager.update(deltaTime);
       }
-
-      // Update frame start time for next limit check
-      this.frameTiming.frameStartTime = now;
+      
+      // Still render the scene for pause menu
+      if (this.renderManager) {
+        this.renderManager.render(deltaTime);
+      } else {
+        this.render();
+      }
+      return;
     }
-
-    // Reset renderer info for new frame
-    this.renderer.info.reset();
-
-    // Update game state
-    this.update(deltaTime);
-
-    // Render scene
-    this.render();
+    
+    // Update FPS counter
+    this.updateFPS(deltaTime);
+    
+    // Update performance monitor if available
+    if (this.performanceMonitor) {
+      this.performanceMonitor.update(deltaTime);
+    }
+    
+    // Update player and camera
+    if (this.player && this.player.enabled) {
+      this.player.update(deltaTime);
+    }
+    
+    // Update camera effects like head bobbing and recoil
+    this.updateMouseLook(deltaTime);
+    
+    // Update all managers
+    if (this.sceneManager) this.sceneManager.update(deltaTime);
+    if (this.inputManager) this.inputManager.update(deltaTime);
+    if (this.entityManager) this.entityManager.update(deltaTime);
+    if (this.zombieManager) this.zombieManager.update(deltaTime);
+    if (this.weaponManager) this.weaponManager.update(deltaTime);
+    if (this.uiManager) this.uiManager.update(deltaTime);
+    if (this.levelManager) this.levelManager.update(deltaTime);
+    if (this.cullingManager && this.settings.cullingEnabled) this.cullingManager.update(deltaTime);
+    if (this.lodManager) this.lodManager.update(deltaTime);
+    if (this.damageManager) this.damageManager.update(deltaTime);
+    if (this.scoreManager) this.scoreManager.update(deltaTime);
+    if (this.gameStateManager) this.gameStateManager.update(deltaTime);
+    if (this.soundManager) this.soundManager.update(deltaTime);
+    if (this.effectsManager) this.effectsManager.update(deltaTime);
+    
+    // Update atmospheric effects if available
+    if (this.atmosphericEffects) {
+      this.atmosphericEffects.update(deltaTime);
+    }
+    
+    // Update lighting manager
+    if (this.lightingManager) {
+      this.lightingManager.update(deltaTime);
+    }
+    
+    // Update animation manager
+    if (this.animationManager) {
+      this.animationManager.update(deltaTime);
+    }
+    
+    // Render scene using RenderManager if available, otherwise use legacy render method
+    if (this.renderManager) {
+      this.renderManager.render(deltaTime);
+    } else {
+      // Reset renderer info for new frame
+      this.renderer.info.reset();
+      
+      // Update game state
+      this.update(deltaTime);
+      
+      // Render scene
+      this.render();
+    }
   }
 
   render() {
@@ -1046,109 +1182,111 @@ export class Game {
 
   applyQualitySettings() {
     const qualityLevel = this.settings.qualityLevel;
-
-    // Default to high quality
-    let shadowMapSize = 2048;
-    let shadowDist = 50;
-    let viewDistance = 100;
-    let maxZombies = 50;
-    let effectDetail = 1.0;
-    let textureQuality = 'high';
-    let enableOcclusionCulling = true;
-
+    
+    console.log(`Applying quality settings: ${qualityLevel}`);
+    
+    // Apply different settings based on quality level
     switch (qualityLevel) {
       case 'low':
-        shadowMapSize = 512;
-        shadowDist = 20;
-        viewDistance = 40;
-        maxZombies = 15;
-        effectDetail = 0.3;
-        textureQuality = 'low';
-        enableOcclusionCulling = false; // Disabled on low-end hardware
+        // Renderer settings
+        this.renderer.setPixelRatio(window.devicePixelRatio > 1 ? 1 : window.devicePixelRatio);
+        this.renderer.shadowMap.enabled = false;
+        
+        // Apply to render manager if available
+        if (this.renderManager) {
+          this.renderManager.applyQualityPreset('low');
+        }
+        
+        // Apply to lighting manager if available
+        if (this.lightingManager) {
+          this.lightingManager.applyQualitySettings();
+        }
+        
+        // Apply to performance optimizer if available
+        if (this.performanceOptimizer) {
+          this.performanceOptimizer.initializeQualityParameters();
+        }
+        
+        // ... rest of low quality settings ...
         break;
+        
       case 'medium':
-        shadowMapSize = 1024;
-        shadowDist = 35;
-        viewDistance = 70;
-        maxZombies = 30;
-        effectDetail = 0.7;
-        textureQuality = 'medium';
-        enableOcclusionCulling = true;
+        // Renderer settings
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFShadowMap;
+        
+        // Apply to render manager if available
+        if (this.renderManager) {
+          this.renderManager.applyQualityPreset('medium');
+        }
+        
+        // Apply to lighting manager if available
+        if (this.lightingManager) {
+          this.lightingManager.applyQualitySettings();
+        }
+        
+        // Apply to performance optimizer if available
+        if (this.performanceOptimizer) {
+          this.performanceOptimizer.initializeQualityParameters();
+        }
+        
+        // ... rest of medium quality settings ...
         break;
+        
       case 'high':
-        shadowMapSize = 2048;
-        shadowDist = 50;
-        viewDistance = 100;
-        maxZombies = 50;
-        effectDetail = 1.0;
-        textureQuality = 'high';
-        enableOcclusionCulling = true;
+        // Renderer settings
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        
+        // Apply to render manager if available
+        if (this.renderManager) {
+          this.renderManager.applyQualityPreset('high');
+        }
+        
+        // Apply to lighting manager if available
+        if (this.lightingManager) {
+          this.lightingManager.applyQualitySettings();
+        }
+        
+        // Apply to performance optimizer if available
+        if (this.performanceOptimizer) {
+          this.performanceOptimizer.initializeQualityParameters();
+        }
+        
+        // ... rest of high quality settings ...
         break;
+        
       case 'ultra':
-        shadowMapSize = 4096;
-        shadowDist = 100;
-        viewDistance = 150;
-        maxZombies = 100;
-        effectDetail = 1.5;
-        textureQuality = 'ultra';
-        enableOcclusionCulling = true;
+        // Renderer settings
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        
+        // Apply to render manager if available
+        if (this.renderManager) {
+          this.renderManager.applyQualityPreset('ultra');
+        }
+        
+        // Apply to lighting manager if available
+        if (this.lightingManager) {
+          this.lightingManager.applyQualitySettings();
+        }
+        
+        // Apply to performance optimizer if available
+        if (this.performanceOptimizer) {
+          this.performanceOptimizer.initializeQualityParameters();
+        }
+        
+        // ... rest of ultra quality settings ...
         break;
     }
-
-    // Apply shadow settings
-    if (this.settings.shadows) {
-      this.renderer.shadowMap.enabled = true;
-      this.directionalLight.castShadow = true;
-      this.directionalLight.shadow.mapSize.width = shadowMapSize;
-      this.directionalLight.shadow.mapSize.height = shadowMapSize;
-      this.directionalLight.shadow.camera.near = 0.5;
-      this.directionalLight.shadow.camera.far = shadowDist;
-      this.directionalLight.shadow.camera.left = -shadowDist;
-      this.directionalLight.shadow.camera.right = shadowDist;
-      this.directionalLight.shadow.camera.top = shadowDist;
-      this.directionalLight.shadow.camera.bottom = -shadowDist;
-    } else {
-      this.renderer.shadowMap.enabled = false;
-      this.directionalLight.castShadow = false;
-    }
-
-    // Apply culling settings
-    if (this.cullingManager) {
-      this.cullingManager.setViewDistance(viewDistance);
-      this.cullingManager.setEnabled(this.settings.cullingEnabled);
-      
-      // Update occlusion culling based on quality settings
-      if (this.cullingManager.setOcclusionCullingEnabled) {
-        this.cullingManager.setOcclusionCullingEnabled(enableOcclusionCulling);
-      }
-    }
-
-    // Apply zombie spawn limits
-    if (this.zombieManager) {
-      this.zombieManager.setMaxZombies(maxZombies);
-    }
-
-    // Apply texturing quality
-    if (this.texturingSystem) {
-      this.texturingSystem.setQuality(textureQuality);
-    }
-
-    // Apply effect detail level
-    if (this.atmosphericEffects) {
-      this.atmosphericEffects.setEffectDetail(effectDetail);
-    }
-
-    // Apply quality settings to the asset manager
-    if (this.assetManager) {
-      this.assetManager.applyQualitySettings(this.settings.qualityLevel);
-    }
-
-    // Update LOD settings
-    if (this.lodManager) {
-      this.lodManager.applyQualitySettings(qualityLevel);
-    }
-
-    console.log(`Applied ${qualityLevel} quality settings`);
+    
+    // Force renderer to update
+    this.onResize();
+    
+    // ... rest of applyQualitySettings method ...
   }
 
   setFrameLimit(enabled, targetFPS = 60) {
@@ -1159,13 +1297,35 @@ export class Game {
 
   dispose() {
     console.log('Disposing game resources...');
-
-    // Stop the animation loop
+    
+    // Stop animation loop
     if (this.frameTiming.frameId !== null) {
       cancelAnimationFrame(this.frameTiming.frameId);
       this.frameTiming.frameId = null;
     }
-
+    
+    // Dispose of managers
+    if (this.inputManager) this.inputManager.dispose();
+    if (this.sceneManager) this.sceneManager.dispose();
+    if (this.entityManager) this.entityManager.dispose();
+    if (this.zombieManager) this.zombieManager.dispose();
+    if (this.weaponManager) this.weaponManager.dispose();
+    if (this.uiManager) this.uiManager.dispose();
+    if (this.levelManager) this.levelManager.dispose();
+    if (this.cullingManager) this.cullingManager.dispose();
+    if (this.lodManager) this.lodManager.dispose();
+    if (this.damageManager) this.damageManager.dispose();
+    if (this.scoreManager) this.scoreManager.dispose();
+    if (this.gameStateManager) this.gameStateManager.dispose();
+    if (this.soundManager) this.soundManager.dispose();
+    if (this.renderManager) this.renderManager.dispose();
+    if (this.effectsManager) this.effectsManager.dispose();
+    if (this.lightingManager) this.lightingManager.dispose();
+    if (this.animationManager) this.animationManager.dispose();
+    if (this.difficultyManager) this.difficultyManager.dispose();
+    if (this.tutorialManager) this.tutorialManager.dispose();
+    if (this.performanceOptimizer) this.performanceOptimizer.dispose();
+    
     // Dispose atmospheric effects
     if (this.atmosphericEffects) {
       this.atmosphericEffects.dispose();
@@ -1182,18 +1342,6 @@ export class Game {
     if (this.player) {
       this.player.dispose();
       this.player = null;
-    }
-
-    // Dispose of zombie manager
-    if (this.zombieManager) {
-      this.zombieManager.dispose();
-      this.zombieManager = null;
-    }
-
-    // Dispose of entity manager
-    if (this.entityManager) {
-      this.entityManager.dispose();
-      this.entityManager = null;
     }
 
     // Remove event listeners
@@ -1290,5 +1438,71 @@ export class Game {
     
     console.log(`Pathfinding debug ${this.debugPathfinding ? 'enabled' : 'disabled'}`);
     return this.debugPathfinding;
+  }
+
+  /**
+   * Apply damage to the player
+   * @param {number} amount - Amount of damage to apply
+   * @param {THREE.Vector3} sourcePosition - Position where damage came from
+   */
+  applyPlayerDamage(amount, sourcePosition) {
+    if (!this.player || this.gameOver) return;
+    
+    // Apply damage to player
+    this.player.applyDamage(amount);
+    
+    // Show damage indicator in UI
+    if (this.uiManager) {
+      this.uiManager.showHealthChange(-amount);
+      this.uiManager.updateHealth(this.player.health, this.player.maxHealth);
+      
+      // Show directional indicator if source position provided
+      if (sourcePosition) {
+        this.uiManager.showDamageIndicator(sourcePosition);
+      }
+      
+      // Add screen shake proportional to damage
+      this.uiManager.addScreenShake(amount * 0.2);
+    }
+    
+    // Track damage in difficulty manager
+    if (this.difficultyManager) {
+      this.difficultyManager.recordDamageReceived(amount);
+    }
+    
+    // Update score multiplier - taking damage reduces multiplier
+    if (this.scoreManager) {
+      this.scoreManager.reduceMultiplier();
+    }
+    
+    // Check for death
+    if (this.player.health <= 0) {
+      this.playerDeath();
+    }
+  }
+
+  /**
+   * Handle player death
+   */
+  playerDeath() {
+    console.log('Player died');
+    
+    // Set game over state
+    this.gameOver = true;
+    
+    // Notify difficulty manager
+    if (this.difficultyManager) {
+      this.difficultyManager.recordPlayerDeath();
+    }
+    
+    // Stop zombie spawning
+    if (this.zombieManager) {
+      this.zombieManager.stopSpawning();
+    }
+    
+    // Change game state
+    if (this.gameStateManager) {
+      this.gameStateManager.changeState(this.gameStateManager.states.GAME_OVER);
+    }
   }
 }

@@ -12,6 +12,10 @@ export class ScoreManager {
     // Multiplier system
     this.scoreMultiplier = 1.0;
     this.baseMultiplier = 1.0;
+    this.streakMultiplier = 1.0;
+    this.killStreak = 0;
+    this.lastKillTime = 0;
+    this.streakTimeout = 5000; // ms before streak resets
     this.multiplierDecayRate = 0.1; // How fast multiplier decays per second
     this.multiplierDecayDelay = 3000; // Milliseconds before multiplier starts decaying
     this.lastScoreTime = 0;
@@ -30,7 +34,15 @@ export class ScoreManager {
       killsByWeapon: {},
       killsByZombieType: {},
       highestMultiplier: 1.0,
-      totalScore: 0
+      totalScore: 0,
+      killsPerType: {
+        standard: 0,
+        runner: 0,
+        brute: 0,
+        exploder: 0,
+        acid_spitter: 0,
+        screamer: 0
+      }
     };
     
     // Point values
@@ -159,7 +171,7 @@ export class ScoreManager {
     }
     
     // Increase multiplier for each kill
-    this.increaseMultiplier(0.1);
+    this.increaseMultiplier();
     
     // Add score with position for visual feedback
     return this.addScore(baseScore + headshotBonus, 
@@ -169,20 +181,32 @@ export class ScoreManager {
   
   /**
    * Increase the score multiplier
-   * @param {number} amount - Amount to increase multiplier by
    */
-  increaseMultiplier(amount) {
-    this.scoreMultiplier = Math.min(this.maxMultiplier, this.scoreMultiplier + amount);
+  increaseMultiplier() {
+    // Increase streak multiplier
+    this.streakMultiplier = Math.min(4.0, this.streakMultiplier + 0.1);
     
-    // Update highest multiplier stat
+    // Update combined multiplier
+    this.recalculateMultiplier();
+    
+    // Reset multiplier decay timer
+    this.lastMultiplierIncreaseTime = Date.now();
+    
+    // Track highest multiplier for stats
     if (this.scoreMultiplier > this.stats.highestMultiplier) {
       this.stats.highestMultiplier = this.scoreMultiplier;
     }
+  }
+  
+  /**
+   * Reduce the multiplier (when taking damage)
+   */
+  reduceMultiplier() {
+    // Reduce streak multiplier
+    this.streakMultiplier = Math.max(1.0, this.streakMultiplier * 0.5);
     
-    // Update UI
-    if (this.game.uiManager) {
-      this.game.uiManager.updateScoreMultiplier(this.scoreMultiplier);
-    }
+    // Update combined multiplier
+    this.recalculateMultiplier();
   }
   
   /**
@@ -251,7 +275,7 @@ export class ScoreManager {
     this.stats.damageTaken += damage;
     
     // Reset multiplier when taking damage
-    this.scoreMultiplier = this.baseMultiplier;
+    this.reduceMultiplier();
     
     // Update UI
     if (this.game.uiManager) {
@@ -356,7 +380,15 @@ export class ScoreManager {
       killsByWeapon: {},
       killsByZombieType: {},
       highestMultiplier: 1.0,
-      totalScore: 0
+      totalScore: 0,
+      killsPerType: {
+        standard: 0,
+        runner: 0,
+        brute: 0,
+        exploder: 0,
+        acid_spitter: 0,
+        screamer: 0
+      }
     };
     
     // Update UI
@@ -406,6 +438,33 @@ export class ScoreManager {
     } catch (e) {
       console.error('Unable to load high score from localStorage', e);
       return 0;
+    }
+  }
+  
+  /**
+   * Set the base score multiplier (from difficulty)
+   * @param {number} multiplier - Base multiplier value
+   */
+  setScoreMultiplier(multiplier) {
+    // Store the base multiplier from difficulty
+    this.baseMultiplier = multiplier || 1.0;
+    
+    // Recalculate current multiplier
+    this.recalculateMultiplier();
+    
+    console.log(`ScoreManager: Base score multiplier set to ${this.baseMultiplier}`);
+  }
+  
+  /**
+   * Recalculate the current multiplier combining base and streak
+   */
+  recalculateMultiplier() {
+    // Combine base multiplier with streak multiplier
+    this.scoreMultiplier = this.baseMultiplier * this.streakMultiplier;
+    
+    // Update UI if available
+    if (this.game.uiManager) {
+      this.game.uiManager.updateScoreMultiplier(this.scoreMultiplier);
     }
   }
 } 

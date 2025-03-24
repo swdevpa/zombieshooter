@@ -27,6 +27,38 @@ export class Pistol extends Weapon {
     // Pistol has moderate accuracy
     this.spread = 0.015;
     
+    // Override muzzle flash settings for pistol
+    this.muzzleFlashSettings = {
+      duration: 0.08, // Shorter duration for pistol
+      color: 0xffaa00,
+      intensity: 1.5,
+      radius: 2,
+      particleCount: 8,
+      particleColor: 0xffff00,
+      particleSize: 0.08
+    };
+    
+    // Pistol-specific animation properties
+    this.slideRecoilAmount = 0.15;
+    this.slideRecoilDuration = 0.1;
+    this.magazineEjectDuration = 0.3;
+    this.magazineInsertDuration = 0.4;
+    this.slideReleaseDuration = 0.2;
+    
+    // Pistol parts for animation
+    this.parts = {
+      slide: null,
+      magazine: null,
+      hammer: null
+    };
+    
+    // Pistol-specific poses
+    this.partPoses = {
+      slide: this.createEmptyPose(),
+      magazine: this.createEmptyPose(),
+      hammer: this.createEmptyPose()
+    };
+    
     // Animations
     this.animations = {
       idle: {
@@ -183,38 +215,6 @@ export class Pistol extends Weapon {
     
     // Add to container
     this.container.add(this.mesh);
-    
-    // Add muzzle flash light
-    this.muzzleFlash = new THREE.PointLight(0xffaa00, 2, 3);
-    this.muzzleFlash.position.set(0, 0, 0.4);
-    this.muzzleFlash.visible = false;
-    this.barrel.add(this.muzzleFlash);
-    
-    // Add muzzle flash particle effect
-    this.addMuzzleFlashEffect();
-  }
-  
-  /**
-   * Add muzzle flash particle effect
-   */
-  addMuzzleFlashEffect() {
-    // Create muzzle flash sprite
-    const muzzleFlashTexture = this.assetLoader.getTexture('muzzleFlash') || 
-                              new THREE.TextureLoader().load('../assets/textures/muzzle_flash.png');
-    
-    const muzzleFlashMaterial = new THREE.SpriteMaterial({
-      map: muzzleFlashTexture,
-      color: 0xffff00,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      opacity: 0
-    });
-    
-    this.muzzleFlashSprite = new THREE.Sprite(muzzleFlashMaterial);
-    this.muzzleFlashSprite.scale.set(0.5, 0.5, 1);
-    this.muzzleFlashSprite.position.set(0, 0, 0.45);
-    this.barrel.add(this.muzzleFlashSprite);
   }
   
   /**
@@ -237,34 +237,167 @@ export class Pistol extends Weapon {
   }
   
   /**
-   * Update animations
+   * Update pistol animations
    */
   updateAnimations(deltaTime) {
-    // Idle animation - gentle bobbing
-    if (this.animations.idle.active && !this.animations.shoot.active && !this.animations.reload.active) {
-      const time = Date.now() * 0.001 * this.animations.idle.timeFactor;
-      const idleAmplitude = 0.005;
-      
-      // Subtle weapon bobbing
-      this.mesh.position.y = -0.3 + Math.sin(time) * idleAmplitude;
-      this.mesh.rotation.z = Math.sin(time * 0.5) * idleAmplitude * 0.5;
+    super.updateAnimations(deltaTime);
+    
+    // Update part poses
+    this.updatePartPoses();
+    
+    // Apply part animations
+    this.applyPartAnimations();
+  }
+  
+  /**
+   * Update part poses from mesh
+   */
+  updatePartPoses() {
+    if (this.parts.slide) {
+      this.partPoses.slide.position.copy(this.parts.slide.position);
+      this.partPoses.slide.rotation.copy(this.parts.slide.rotation);
     }
     
-    // Shoot animation
-    if (this.animations.shoot.active) {
-      const elapsed = Date.now() - this.animations.shoot.startTime;
+    if (this.parts.magazine) {
+      this.partPoses.magazine.position.copy(this.parts.magazine.position);
+      this.partPoses.magazine.rotation.copy(this.parts.magazine.rotation);
+    }
+    
+    if (this.parts.hammer) {
+      this.partPoses.hammer.position.copy(this.parts.hammer.position);
+      this.partPoses.hammer.rotation.copy(this.parts.hammer.rotation);
+    }
+  }
+  
+  /**
+   * Apply animations to pistol parts
+   */
+  applyPartAnimations() {
+    if (!this.game.animationManager) return;
+    
+    const weights = this.game.animationManager.blendWeights;
+    
+    // Apply animations to slide
+    if (this.parts.slide) {
+      this.applyBlendedTransform(
+        this.parts.slide,
+        this.partPoses.slide,
+        this.calculateSlidePose(),
+        weights
+      );
+    }
+    
+    // Apply animations to magazine
+    if (this.parts.magazine) {
+      this.applyBlendedTransform(
+        this.parts.magazine,
+        this.partPoses.magazine,
+        this.calculateMagazinePose(),
+        weights
+      );
+    }
+    
+    // Apply animations to hammer
+    if (this.parts.hammer) {
+      this.applyBlendedTransform(
+        this.parts.hammer,
+        this.partPoses.hammer,
+        this.calculateHammerPose(),
+        weights
+      );
+    }
+  }
+  
+  /**
+   * Calculate slide pose
+   */
+  calculateSlidePose() {
+    const pose = this.createEmptyPose();
+    
+    if (this.animationState.shooting) {
+      const progress = Math.min(this.currentAnimationTime / this.slideRecoilDuration, 1);
+      const curve = Math.sin(progress * Math.PI);
       
-      if (elapsed > this.animations.shoot.duration) {
-        this.animations.shoot.active = false;
-        this.animations.idle.active = true;
+      // Slide recoils back
+      pose.position.x = this.partPoses.slide.position.x - curve * this.slideRecoilAmount;
+    }
+    
+    return pose;
+  }
+  
+  /**
+   * Calculate magazine pose
+   */
+  calculateMagazinePose() {
+    const pose = this.createEmptyPose();
+    
+    if (this.animationState.reloading) {
+      const progress = Math.min(this.currentAnimationTime / this.reloadDuration, 1);
+      
+      if (progress < 0.3) {
+        // Magazine ejects
+        const ejectProgress = progress / 0.3;
+        pose.position.y = this.partPoses.magazine.position.y - ejectProgress * 0.2;
+        pose.rotation.x = ejectProgress * Math.PI * 0.5;
+      } else if (progress < 0.7) {
+        // Magazine inserts
+        const insertProgress = (progress - 0.3) / 0.4;
+        pose.position.y = this.partPoses.magazine.position.y - 0.2 + insertProgress * 0.2;
+        pose.rotation.x = Math.PI * 0.5 - insertProgress * Math.PI * 0.5;
       }
     }
     
-    // Legacy reload animation system - keeping for backward compatibility
-    // New system uses the base class reloadAnimationSystem
-    if (this.animations.reload.active && !this.reloadAnimationSystem.active) {
-      this.animations.reload.active = false;
-      this.reloadAnimationSystem.active = true;
+    return pose;
+  }
+  
+  /**
+   * Calculate hammer pose
+   */
+  calculateHammerPose() {
+    const pose = this.createEmptyPose();
+    
+    if (this.animationState.shooting) {
+      const progress = Math.min(this.currentAnimationTime / this.slideRecoilDuration, 1);
+      const curve = Math.sin(progress * Math.PI);
+      
+      // Hammer cocks back
+      pose.rotation.x = curve * Math.PI * 0.5;
+    }
+    
+    return pose;
+  }
+  
+  /**
+   * Start shooting animation
+   */
+  startShootAnimation() {
+    super.startShootAnimation();
+    
+    // Play slide recoil sound
+    if (this.game.soundManager) {
+      this.game.soundManager.playSound('pistol_slide', this.mesh.position);
+    }
+  }
+  
+  /**
+   * Start reload animation
+   */
+  startReloadAnimation() {
+    super.startReloadAnimation();
+    
+    // Play magazine sounds
+    if (this.game.soundManager) {
+      this.game.soundManager.playSound('magazine_eject', this.mesh.position);
+      
+      // Play magazine insert sound after delay
+      setTimeout(() => {
+        this.game.soundManager.playSound('magazine_insert', this.mesh.position);
+      }, this.magazineEjectDuration * 1000);
+      
+      // Play slide release sound after magazine insert
+      setTimeout(() => {
+        this.game.soundManager.playSound('slide_release', this.mesh.position);
+      }, (this.magazineEjectDuration + this.magazineInsertDuration) * 1000);
     }
   }
   
@@ -428,46 +561,6 @@ export class Pistol extends Weapon {
   }
   
   /**
-   * Override base showMuzzleFlash to include sprite animation
-   */
-  showMuzzleFlash() {
-    // Call parent method
-    super.showMuzzleFlash();
-    
-    // Animate muzzle flash sprite
-    if (this.muzzleFlashSprite) {
-      // Random rotation for variation
-      this.muzzleFlashSprite.material.rotation = Math.random() * Math.PI * 2;
-      
-      // Random scale for variation
-      const scale = 0.4 + Math.random() * 0.3;
-      this.muzzleFlashSprite.scale.set(scale, scale, 1);
-      
-      // Show and fade out
-      this.muzzleFlashSprite.material.opacity = 0.9;
-      
-      // Fade out animation
-      const startTime = Date.now();
-      const duration = 50; // ms
-      
-      const fadeOutFlash = () => {
-        const elapsed = Date.now() - startTime;
-        const progress = elapsed / duration;
-        
-        if (progress >= 1) {
-          this.muzzleFlashSprite.material.opacity = 0;
-          return;
-        }
-        
-        this.muzzleFlashSprite.material.opacity = 0.9 * (1 - progress);
-        requestAnimationFrame(fadeOutFlash);
-      };
-      
-      fadeOutFlash();
-    }
-  }
-  
-  /**
    * Override shoot method to trigger animation
    */
   shoot() {
@@ -592,5 +685,30 @@ export class Pistol extends Weapon {
       
       animateRecoil();
     }, 50);
+  }
+  
+  /**
+   * Get the current position of the pistol muzzle for muzzle flash effects
+   * @returns {THREE.Vector3} Position of the muzzle in world space
+   */
+  getMuzzlePosition() {
+    // If no mesh, return default position
+    if (!this.mesh) {
+      return this.player.container.position.clone().add(new THREE.Vector3(0, 1.6, -1));
+    }
+    
+    // Create a position at the front of the pistol barrel
+    const muzzleOffset = new THREE.Vector3(0, 0.02, -0.2); // Slightly forward from the barrel end
+    
+    // Create a vector to hold the world position
+    const muzzlePosition = new THREE.Vector3();
+    
+    // Use the mesh to calculate the world position of the muzzle
+    muzzlePosition.copy(muzzleOffset);
+    
+    // Transform the local position to world space
+    this.mesh.localToWorld(muzzlePosition);
+    
+    return muzzlePosition;
   }
 } 

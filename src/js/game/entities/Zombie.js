@@ -1714,4 +1714,125 @@ export class Zombie {
       }
     }
   }
+
+  /**
+   * Initialize or re-initialize a zombie for reuse from the pool
+   * @param {THREE.Vector3} position - Position to place the zombie
+   * @param {Object} options - Zombie configuration options
+   */
+  initialize(position, options = {}) {
+    // Set position
+    this.container.position.copy(position);
+    
+    // Set default type if not specified
+    this.type = options.type || 'standard';
+    
+    // Initialize health based on type
+    switch (this.type) {
+      case 'runner':
+        this.maxHealth = 80;
+        this.speed = 2.5;
+        break;
+      case 'brute':
+        this.maxHealth = 250;
+        this.speed = 0.8;
+        break;
+      case 'exploder':
+        this.maxHealth = 100;
+        this.speed = 1.5;
+        break;
+      case 'spitter':
+        this.maxHealth = 120;
+        this.speed = 1.2;
+        break;
+      case 'screamer':
+        this.maxHealth = 150;
+        this.speed = 1.0;
+        break;
+      default: // standard
+        this.maxHealth = 100;
+        this.speed = 1.0;
+    }
+    
+    // Set current health to maximum
+    this.health = this.maxHealth;
+    
+    // Reset damage state
+    this.timeSinceDamage = 0;
+    this.lastDamageTime = 0;
+    this.attackCooldown = 0;
+    this.stunned = false;
+    this.stunTime = 0;
+    
+    // Reset pathfinding state
+    if (this.pathfinding) {
+      this.pathfinding.path = [];
+      this.pathfinding.currentPathIndex = 0;
+      this.pathfinding.pathNeedsUpdate = true;
+      this.pathfinding.lastPathUpdateTime = 0;
+    }
+    
+    // Reset animation state
+    if (this.model && this.model.setAnimationState) {
+      this.model.setAnimationState('idle');
+    }
+    
+    // Reset special effects
+    this.regenerates = options.regenerates || false;
+    this.explodes = options.explodes || false;
+    this.explosionRadius = options.explosionRadius || 3;
+    this.spits = options.spits || false;
+    this.screams = options.screams || false;
+    
+    // Reset visibility and state
+    this.container.visible = true;
+    this.isAlive = true;
+    this.isActive = true;
+    
+    // Reset timers
+    this.timeSinceDeath = undefined;
+    
+    // Apply any other options
+    if (options.health) this.health = options.health;
+    if (options.speed) this.speed = options.speed;
+    
+    // Apply modifiers if provided
+    if (options.healthMultiplier) this.health *= options.healthMultiplier;
+    if (options.speedMultiplier) this.speed *= options.speedMultiplier;
+    
+    // Play spawn animation if available
+    if (this.model && this.model.playAnimation) {
+      this.model.playAnimation('spawn');
+      
+      // Queue walking animation after spawn
+      setTimeout(() => {
+        if (this.isAlive) {
+          this.model.playAnimation('walk');
+        }
+      }, 1200);
+    }
+    
+    return this;
+  }
+
+  /**
+   * Reset zombie for object pooling
+   */
+  reset() {
+    // Reset state
+    this.health = 0;
+    this.isAlive = false;
+    this.isActive = false;
+    
+    // Reset visibility
+    this.container.visible = false;
+    
+    // Move far away to ensure it's not in the player's view
+    this.container.position.set(1000, 1000, 1000);
+    
+    // Stop all animations
+    if (this.model && this.model.stopAllAnimations) {
+      this.model.stopAllAnimations();
+    }
+  }
 }

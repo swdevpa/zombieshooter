@@ -198,6 +198,13 @@ export class DamageManager {
    * @param {boolean} isCritical - Whether this was a critical hit
    */
   createHitEffect(target, position, hitZone, isCritical) {
+    // Use effects manager if available
+    if (this.game && this.game.effectsManager) {
+      this.game.effectsManager.createBloodSplatterEffect(position, hitZone, isCritical);
+      return;
+    }
+    
+    // Legacy code for creating effects if effects manager is not available
     // Create blood spray effect
     const particleCount = isCritical ? 
       this.effectsSettings.criticalBloodSprayParticleCount : 
@@ -415,6 +422,13 @@ export class DamageManager {
    * @param {number} radius - Radius of explosion
    */
   createExplosionEffect(position, radius) {
+    // Use effects manager if available
+    if (this.game && this.game.effectsManager) {
+      this.game.effectsManager.createExplosionEffect(position, radius);
+      return;
+    }
+    
+    // Legacy code for creating explosion if effects manager is not available
     // Create explosion geometry
     const geometry = new THREE.SphereGeometry(0.1, 8, 8);
     const material = new THREE.MeshBasicMaterial({
@@ -496,6 +510,13 @@ export class DamageManager {
    * @param {number} radius - Radius of explosion
    */
   createExplosionRing(position, radius) {
+    // Use effects manager if available
+    if (this.game && this.game.effectsManager) {
+      // Already handled by the explosion effect
+      return;
+    }
+    
+    // Legacy code for creating explosion ring if effects manager is not available
     // Create ring geometry
     const ringGeometry = new THREE.RingGeometry(0.1, 0.2, 32);
     const ringMaterial = new THREE.MeshBasicMaterial({
@@ -695,5 +716,57 @@ export class DamageManager {
       isCritical: isCritical,
       hitZone: hitZone
     };
+  }
+  
+  /**
+   * Apply damage to a zombie
+   * @param {Object} zombie - The zombie to damage
+   * @param {number} amount - Damage amount 
+   * @param {string} hitZone - Zone that was hit (head, body, limbs)
+   * @param {boolean} displayOnly - If true, just display damage without applying it
+   * @returns {boolean} - True if the zombie was killed
+   */
+  applyDamageToZombie(zombie, amount, hitZone = 'body', displayOnly = false) {
+    if (!zombie) return false;
+    
+    // Apply damage multiplier based on hit zone
+    let finalDamage = amount;
+    
+    switch (hitZone) {
+      case 'head':
+        finalDamage *= this.damageMultipliers.headshot;
+        break;
+      case 'limb':
+        finalDamage *= this.damageMultipliers.limb;
+        break;
+      default: // 'body'
+        finalDamage *= this.damageMultipliers.body;
+        break;
+    }
+    
+    // Display damage effect
+    this.showDamageEffect(zombie, finalDamage, hitZone);
+    
+    // Return early if this is display only
+    if (displayOnly) return false;
+    
+    // Apply damage to zombie
+    const wasKilled = zombie.applyDamage(finalDamage);
+    
+    // Handle kill
+    if (wasKilled) {
+      // Track zombie kill in difficulty manager
+      if (this.game.difficultyManager) {
+        this.game.difficultyManager.recordZombieKill(zombie, hitZone === 'head');
+      }
+      
+      // Add score for kill
+      if (this.game.scoreManager) {
+        const scoreAmount = this.getScoreForKill(zombie.type, hitZone === 'head');
+        this.game.scoreManager.addScore(scoreAmount, zombie.container.position, hitZone === 'head' ? 'headshot' : 'kill');
+      }
+    }
+    
+    return wasKilled;
   }
 } 

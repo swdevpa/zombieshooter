@@ -85,6 +85,34 @@ export class InputManager {
         }
         break;
         
+      case 'KeyF':
+        // Toggle flashlight
+        if (this.game.lightingManager) {
+          const flashlightEnabled = this.game.lightingManager.toggleFlashlight();
+          
+          // Show UI feedback if available
+          if (this.game.uiManager) {
+            this.game.uiManager.showNotification(
+              flashlightEnabled ? 'Flashlight ON' : 'Flashlight OFF'
+            );
+          }
+        }
+        break;
+        
+      case 'KeyL':
+        // Toggle lighting debug mode
+        if (this.game.lightingManager) {
+          const debugEnabled = this.game.lightingManager.toggleDebugMode();
+          
+          // Show UI feedback if available
+          if (this.game.uiManager) {
+            this.game.uiManager.showNotification(
+              debugEnabled ? 'Lighting Debug ON' : 'Lighting Debug OFF'
+            );
+          }
+        }
+        break;
+        
       case 'KeyP':
         // Toggle pause with P key
         if (!event.altKey && this.game.togglePause) {
@@ -111,6 +139,20 @@ export class InputManager {
           }
         }
         break;
+
+      // Toggle performance overlay with F8
+      if (event.key === 'F8' && !event.repeat) {
+        if (this.game.performanceMonitor) {
+          this.game.performanceMonitor.toggleOverlay();
+        }
+      }
+      
+      // Toggle render debug mode with F9
+      if (event.key === 'F9' && !event.repeat) {
+        if (this.game.renderManager) {
+          this.game.renderManager.toggleDebugMode();
+        }
+      }
     }
   }
 
